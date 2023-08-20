@@ -1,0 +1,14 @@
+--extra-index-url https://download.pytorch.org/whl/cu116 torch torchvision torchaudio
+
+comtypes==1.2.0
+pip==21.1.2
+psutil==5.9.5
+PyAudio==0.2.13
+pycaw==20230407
+pydub==0.25.1
+setuptools==57.0.0
+wheel==0.36.2
+azure-cognitiveservices-speech
+git+https://github.com/openai/whisper.git
+torch~=2.0.1+cu117
+numpy~=1.24.1
