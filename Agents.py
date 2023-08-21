@@ -1,4 +1,5 @@
 import time
+import re
 from typing import List, Dict, Optional, Any, Tuple
 
 from langchain import PromptTemplate, LLMChain
@@ -17,10 +18,12 @@ class DialogueAgent:
         name: str,
         system_message: SystemMessage = None,
         model = None,
+        TTSEngine=None,
     ) -> None:
         self.name = name
         self.system_message = system_message
         self.model = model
+        self.TTSEngine = TTSEngine
         self.prefix = f"{self.name}: "
         self.reset()
 
@@ -36,6 +39,9 @@ class DialogueAgent:
                     HumanMessage(content="\n".join(self.message_history + [self.prefix])),
                 ]
             )
+            if self.TTSEngine:
+                self.TTSEngine.speak(message.content)
+
             return message.content
         else:
             raise NotImplementedError
@@ -114,9 +120,11 @@ class DialogueAgentWithTools(DialogueAgent):
             system_message: SystemMessage,
             model,
             tools: List,
+            TTSEngine = None,
     ) -> None:
         super().__init__(name, system_message, model)
         self.tools = tools
+        self.TTSEngine = TTSEngine
         ToolRegistry().set_tools(name, self.tools)
 
     def send(self) -> str:
@@ -124,41 +132,75 @@ class DialogueAgentWithTools(DialogueAgent):
         Applies the chatmodel to the message history
         and returns the message string
         """
-        todo_prompt = PromptTemplate.from_template(
-            "You are a planner who is an expert at coming up with a todo list for a given objective. Come up with a todo list for this objective: {objective}"
-        )
-        todo_chain = LLMChain(llm=self.model, prompt=todo_prompt)
-        todo_tool = Tool(
-            name="TODO",
-            func=todo_chain.run,
-            description="useful for when you need to come up with todo lists. Input: an objective to create a todo list for. Output: a todo list for that objective. Fully describe your task in detail!",
-        )
-        ToolRegistry().add_tool(self.name, todo_tool)
 
-        agent_chain = SelfModifiableAgentExecutor.from_agent_and_tools(
-            agent=StructuredChatAgent.from_llm_and_tools(llm=self.model,
-                                                         tools=self.tools),
-            tools=self.tools,
-            max_iterations=99,
-            verbose=True,
-            memory=ConversationBufferMemory(
-                memory_key="chat_history", return_messages=True
-            ),
-            name=self.name
+        ask_for_tools_prompt = "If I feel the need to look something up, whether from the web or from your own " \
+                               "memory, I will append say [search] or [recall] and will then tell you I am either " \
+                               "thinking or searching for something. I will say a lot and stall for time while I " \
+                                 "am thinking. If I am searching, I will tell you what I am searching for."
+
+        print(f"{self.name}: ")
+        message = self.model(
+            [
+                SystemMessage(role=self.name, content=self.system_message.content + ask_for_tools_prompt),
+                HumanMessage(content="\n".join(self.message_history + [self.prefix])),
+            ]
         )
 
-        message = AIMessage(
-            content=agent_chain.run(
-                input="\n".join(
-                    [self.system_message.content] + self.message_history + [self.prefix]
+        think_more = False
+        #if message content contains square brackets, the brackets and the text between them are removed and the content is passed to the tool
+        spoken = message.content
+        if "[" in spoken:
+            think_more = True
+            spoken = re.sub(r'\[.*?\]', '', spoken)
+
+        if self.TTSEngine:
+            self.TTSEngine.speak_async(spoken)
+
+        if think_more:
+            agent_chain = SelfModifiableAgentExecutor.from_agent_and_tools(
+                agent=StructuredChatAgent.from_llm_and_tools(llm=self.model,
+                                                             tools=self.tools),
+                tools=self.tools,
+                max_iterations=5,
+                verbose=True,
+                memory=ConversationBufferMemory(
+                    memory_key="chat_history", return_messages=True
+                ),
+                name=self.name
+            )
+
+            message = AIMessage(
+                content=agent_chain.run(
+                    input="\n".join(
+                        [self.system_message.content] + self.message_history + [self.prefix]
+                    )
                 )
             )
-        )
+
+            if self.TTSEngine:
+                spoken = message.content
+                if "[" in spoken:
+                    spoken = re.sub(r'\[.*?\]', '', spoken)
+                self.TTSEngine.speak(spoken)
 
         return message.content
 
-
 class UserAgent(DialogueAgent):
+    def __init__(
+        self,
+        name: str,
+        system_message: SystemMessage = None,
+        model = None,
+    ) -> None:
+        self.name = name
+        self.system_message = system_message
+        self.model = model
+        self.prefix = f"{self.name}: "
+        self.reset()
+
     def send(self) -> str:
         message = input(f"\n{self.prefix}")
         return message
+
+    def receive(self, name: str, message: str) -> None:
+        print(f"{name}: {message}")

@@ -1,6 +1,6 @@
 import azure.cognitiveservices.speech as speechsdk
 import os
-from AudioUtilities import find_windows_output_device
+from audio.AudioUtilities import find_windows_output_device
 
 
 class TTSClient:
@@ -28,6 +28,9 @@ class TTSClient:
             print("Speech synthesis canceled: {}".format(cancellation_details.reason))
             if cancellation_details.reason == speechsdk.CancellationReason.Error:
                 print("Error details: {}".format(cancellation_details.error_details))
+
+    def speak_async(self, text_input):
+        self.speech_synthesizer.speak_text_async(text_input)
 
 
 if __name__ == "__main__":

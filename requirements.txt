@@ -12,3 +12,7 @@ azure-cognitiveservices-speech
 git+https://github.com/openai/whisper.git
 torch~=2.0.1+cu117
 numpy~=1.24.1
+google-api-python-client
+chromadb
+tiktoken
+sentence_transformers
