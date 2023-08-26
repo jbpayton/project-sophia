@@ -24,10 +24,12 @@ def find_input_device(selected_device_name=None):
             if selected_device_name in device_name:
                 print("STT Input Device " + device_name + " found.")
                 return idx
-    else:
-        selected_device_name = "<NOT SPECIFIED>"
 
-    print("STT Input Device " + selected_device_name + " not found. Defaulting to index 1 - " + devices[1][1])
+    print("Audio Input Device not specified. Defaulting to index 1 - " + devices[1][1])
+    print("Available devices:")
+    for idx, device_name in devices:
+        print(str(idx) + ": " + device_name)
+
     return 1
 
 
@@ -76,6 +78,12 @@ def find_windows_output_device(selected_device_name=None):
             print("Found input device.")
             print(device.FriendlyName)
             return device.id
+
+    print("Output device not found. Uaing default device.")
+    print("Available devices:")
+    for device in devices:
+        print(device.FriendlyName)
+    return None
 
 
 def play_mp3_to_device(mp3_file, device_index):

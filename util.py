@@ -30,3 +30,10 @@ def load_profile(profile_name, base_directory="./profiles"):
         data = json.load(f)
 
     return data
+
+
+def load_config_file(filename='config.ini'):
+    import configparser
+    config = configparser.ConfigParser()
+    config.read(filename)
+    return config

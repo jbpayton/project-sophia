@@ -12,6 +12,7 @@ from langchain.utils import get_color_mapping
 
 from tools.ToolRegistry import ToolRegistry
 
+
 class DialogueAgent:
     def __init__(
         self,
@@ -113,6 +114,7 @@ class SelfModifiableAgentExecutor(AgentExecutor):
         )
         return self._return(output, intermediate_steps, run_manager=run_manager)
 
+
 class DialogueAgentWithTools(DialogueAgent):
     def __init__(
         self,
@@ -147,14 +149,18 @@ class DialogueAgentWithTools(DialogueAgent):
         )
 
         think_more = False
-        #if message content contains square brackets, the brackets and the text between them are removed and the content is passed to the tool
+        # if message content contains square brackets, the brackets and the text between them are removed and the
+        # content is passed to the tool
         spoken = message.content
         if "[" in spoken:
             think_more = True
             spoken = re.sub(r'\[.*?\]', '', spoken)
 
         if self.TTSEngine:
-            self.TTSEngine.speak_async(spoken)
+            if (think_more):
+                self.TTSEngine.speak_async(spoken)
+            else:
+                self.TTSEngine.speak(spoken)
 
         if think_more:
             agent_chain = SelfModifiableAgentExecutor.from_agent_and_tools(
@@ -191,15 +197,20 @@ class UserAgent(DialogueAgent):
         name: str,
         system_message: SystemMessage = None,
         model = None,
+        stt_engine = None,
     ) -> None:
         self.name = name
         self.system_message = system_message
         self.model = model
+        self.stt_engine = stt_engine
         self.prefix = f"{self.name}: "
         self.reset()
 
     def send(self) -> str:
-        message = input(f"\n{self.prefix}")
+        if self.stt_engine:
+            message = self.stt_engine.listen()
+        else:
+            message = input(f"\n{self.prefix}")
         return message
 
     def receive(self, name: str, message: str) -> None:

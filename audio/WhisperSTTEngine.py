@@ -19,13 +19,15 @@ class WhisperSTTEngine:
         self.r.energy_threshold = energy
         self.r.pause_threshold = pause
         self.r.dynamic_energy_threshold = dynamic_energy
-        self.mic_source = sr.Microphone(device_index=find_input_device(selected_device_name=input_audio_device), sample_rate=16000)
+        self.mic_source = sr.Microphone(device_index=find_input_device(selected_device_name=input_audio_device),
+                                        sample_rate=16000)
         with self.mic_source as source:
             self.r.adjust_for_ambient_noise(source, duration=0.5)
 
-        print("Systems Loaded")
+        print("STT Engine Started")
 
     def listen(self):
+        print("Listening...")
         while True:
             idle_response = False
 

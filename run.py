@@ -5,20 +5,30 @@ from langchain.schema import (
     SystemMessage,
 )
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from langchain.tools import Tool
 
 from Agents import DialogueAgent, UserAgent, DialogueAgentWithTools
 from DialogSimulator import DialogueSimulator
-from langchain.utilities import GoogleSearchAPIWrapper
-from tools.LLMBrowsingTools import query_website, paged_web_browser
+from langchain.tools import DuckDuckGoSearchRun
+from tools.LLMBrowsingTools import paged_web_browser
 
 from audio.AzureSpeech import TTSClient
+from audio.WhisperSTTEngine import WhisperSTTEngine
 
 import util
 
 if __name__ == "__main__":
 
     profile_name = "Sophia"
+    input_audio_device = None
+    output_audio_device = None
+
+    # read profile name and input/output audio device from a config file
+    # if not specified, use the default values
+    config = util.load_config_file()
+
+    profile_name = config['Avatar']['profile_name']
+    input_audio_device = config['Audio']['input_audio_device']
+    output_audio_device = config['Audio']['output_audio_device']
 
     util.load_secrets()
 
@@ -27,24 +37,11 @@ if __name__ == "__main__":
     # Define system prompts for our two agents
     system_prompt_avatar = SystemMessage(role=profile['name'],
                                          content=profile['personality'])
-    # initialie search API
-    search = GoogleSearchAPIWrapper()
 
-
-    def top10_results(query):
-        return search.results(query, 10)
-
-
-    GoogleSearchTool = Tool(
-        name="Google Search",
-        description="Search Google for recent results.",
-        func=top10_results,
-    )
-
-    tools = [GoogleSearchTool,
+    tools = [DuckDuckGoSearchRun(),
              paged_web_browser]
 
-    avatar_tts = TTSClient(voice=profile['voice'], device_name=None)
+    avatar_tts = TTSClient(voice=profile['voice'], device_name=output_audio_device)
 
     # Initialize our agents with their respective roles and system prompts
     avatar = DialogueAgentWithTools(name=profile['name'],
@@ -54,14 +51,13 @@ if __name__ == "__main__":
                                     tools=tools,
                                     TTSEngine=avatar_tts)
 
-
     # Define a round-robin selection function
     def round_robin(step: int, agents: List[DialogueAgent]) -> int:
         return step % len(agents)
 
-
     # Initialize the User agent
-    user_agent = UserAgent(name="User")
+    user_stt = WhisperSTTEngine(input_audio_device=input_audio_device)
+    user_agent = UserAgent(name="User", stt_engine=user_stt)
 
     agent_list = [user_agent, avatar]
 
