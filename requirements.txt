@@ -16,6 +16,8 @@ duckduckgo-search
 chromadb
 tiktoken
 sentence_transformers
+pyTelegramBotAPI
+cogdb
 
 langchain~=0.0.268
 requests~=2.28.1

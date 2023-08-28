@@ -25,6 +25,9 @@ class DialogueSimulator:
         speaker_idx = self.select_next_speaker(self._step, self.agents)
         speaker = self.agents[speaker_idx]
         message = speaker.send()
+        if hasattr(speaker, "needs_to_think_more"):
+            if speaker.needs_to_think_more:
+                speaker.send()
         for receiver in self.agents:
             receiver.receive(speaker.name, message)
         self._step += 1

@@ -37,3 +37,13 @@ def load_config_file(filename='config.ini'):
     config = configparser.ConfigParser()
     config.read(filename)
     return config
+
+
+def create_config_file(filename='config.ini'):
+    import configparser
+    config = configparser.ConfigParser()
+    config['Avatar'] = {'profile_name': 'Sophia'}
+    config['Audio'] = {'input_audio_device': 'Default', 'output_audio_device': 'Default'}
+    with open(filename, 'w') as f:
+        config.write(f)
+    return config

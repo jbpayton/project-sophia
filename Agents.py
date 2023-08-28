@@ -1,15 +1,19 @@
 import time
 import re
 from typing import List, Dict, Optional, Any, Tuple
+from CogDBGraphStore import CogDBGraphStore
 
 from langchain import PromptTemplate, LLMChain
 from langchain.agents import StructuredChatAgent, AgentExecutor
+from langchain.callbacks import StreamingStdOutCallbackHandler
 from langchain.callbacks.manager import CallbackManagerForChainRun
+from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import SystemMessage, HumanMessage, AIMessage, AgentAction, AgentFinish
-from langchain.tools import Tool
+from langchain.tools import Tool, DuckDuckGoSearchRun
 from langchain.utils import get_color_mapping
 
+from tools import paged_web_browser
 from tools.ToolRegistry import ToolRegistry
 
 
@@ -127,6 +131,8 @@ class DialogueAgentWithTools(DialogueAgent):
         super().__init__(name, system_message, model)
         self.tools = tools
         self.TTSEngine = TTSEngine
+        self.needs_to_think_more = False
+        self.graph_store = CogDBGraphStore(model=self.model)
         ToolRegistry().set_tools(name, self.tools)
 
     def send(self) -> str:
@@ -134,40 +140,30 @@ class DialogueAgentWithTools(DialogueAgent):
         Applies the chatmodel to the message history
         and returns the message string
         """
+        self.graph_store.get_graph_from_conversation(self.message_history)
+        if not self.needs_to_think_more:
+            ask_for_tools_prompt = "If I feel the need to look something up, whether from the web or from your own " \
+                                   "memory, I will append [search] or [recall] and will then tell you I am either " \
+                                   "thinking or searching for something. I will say a lot and stall for time while I " \
+                                     "am thinking. If I am searching, I will tell you what I am searching for."
 
-        ask_for_tools_prompt = "If I feel the need to look something up, whether from the web or from your own " \
-                               "memory, I will append say [search] or [recall] and will then tell you I am either " \
-                               "thinking or searching for something. I will say a lot and stall for time while I " \
-                                 "am thinking. If I am searching, I will tell you what I am searching for."
+            print(f"{self.name}: ")
+            message = self.model(
+                [
+                    SystemMessage(role=self.name, content=self.system_message.content + ask_for_tools_prompt),
+                    HumanMessage(content="\n".join(self.message_history + [self.prefix])),
+                ]
+            )
 
-        print(f"{self.name}: ")
-        message = self.model(
-            [
-                SystemMessage(role=self.name, content=self.system_message.content + ask_for_tools_prompt),
-                HumanMessage(content="\n".join(self.message_history + [self.prefix])),
-            ]
-        )
+            if "[" in message.content:
+                self.needs_to_think_more = True
 
-        think_more = False
-        # if message content contains square brackets, the brackets and the text between them are removed and the
-        # content is passed to the tool
-        spoken = message.content
-        if "[" in spoken:
-            think_more = True
-            spoken = re.sub(r'\[.*?\]', '', spoken)
-
-        if self.TTSEngine:
-            if (think_more):
-                self.TTSEngine.speak_async(spoken)
-            else:
-                self.TTSEngine.speak(spoken)
-
-        if think_more:
+        else:
             agent_chain = SelfModifiableAgentExecutor.from_agent_and_tools(
                 agent=StructuredChatAgent.from_llm_and_tools(llm=self.model,
                                                              tools=self.tools),
                 tools=self.tools,
-                max_iterations=5,
+                max_iterations=10,
                 verbose=True,
                 memory=ConversationBufferMemory(
                     memory_key="chat_history", return_messages=True
@@ -183,10 +179,15 @@ class DialogueAgentWithTools(DialogueAgent):
                 )
             )
 
-            if self.TTSEngine:
-                spoken = message.content
-                if "[" in spoken:
-                    spoken = re.sub(r'\[.*?\]', '', spoken)
+            self.needs_to_think_more = False
+
+        if self.TTSEngine:
+            spoken = message.content
+            if "[" in spoken:
+                spoken = re.sub(r'\[.*?\]', '', spoken)
+            if self.needs_to_think_more:
+                self.TTSEngine.speak_async(spoken)
+            else:
                 self.TTSEngine.speak(spoken)
 
         return message.content
@@ -215,3 +216,20 @@ class UserAgent(DialogueAgent):
 
     def receive(self, name: str, message: str) -> None:
         print(f"{name}: {message}")
+
+
+def get_avatar_agent(profile=None, avatar_tts=None):
+    # Define system prompts for our  agent
+    system_prompt_avatar = SystemMessage(role=profile['name'],
+                                         content=profile['personality'])
+    tools = [DuckDuckGoSearchRun(),
+             paged_web_browser]
+
+    # Initialize our agent with role and system prompt
+    avatar = DialogueAgentWithTools(name=profile['name'],
+                                    system_message=system_prompt_avatar,
+                                    model=ChatOpenAI(model_name='gpt-4', streaming=True,
+                                                     callbacks=[StreamingStdOutCallbackHandler()]),
+                                    tools=tools,
+                                    TTSEngine=avatar_tts)
+    return avatar
