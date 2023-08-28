@@ -190,6 +190,7 @@ class DialogueAgentWithTools(DialogueAgent):
             else:
                 self.TTSEngine.speak(spoken)
 
+        self.message_history.append(f"{self.name}: {message.content}")
         return message.content
 
 class UserAgent(DialogueAgent):
