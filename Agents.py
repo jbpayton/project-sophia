@@ -52,7 +52,10 @@ class DialogueAgent:
             raise NotImplementedError
 
     def receive(self, name: str, message: str) -> None:
-        self.message_history.append(f"{name}: {message}")
+        # create a timestamped message
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+        self.message_history.append(f"({timestamp}) {name}: {message}")
 
 
 class SelfModifiableAgentExecutor(AgentExecutor):
@@ -132,7 +135,10 @@ class DialogueAgentWithTools(DialogueAgent):
         self.tools = tools
         self.TTSEngine = TTSEngine
         self.needs_to_think_more = False
-        self.graph_store = CogDBGraphStore(model=self.model)
+        chat = ChatOpenAI(
+            model_name='gpt-3.5-turbo-16k'
+        )
+        self.graph_store = CogDBGraphStore(model=chat)
         ToolRegistry().set_tools(name, self.tools)
 
     def send(self) -> str:
@@ -140,7 +146,11 @@ class DialogueAgentWithTools(DialogueAgent):
         Applies the chatmodel to the message history
         and returns the message string
         """
-        self.graph_store.get_graph_from_conversation(self.message_history)
+
+        # every 10 messages, we will get a new graph
+        if len(self.message_history) % 10 == 0:
+            self.graph_store.get_graph_from_conversation(self.message_history)
+
         if not self.needs_to_think_more:
             ask_for_tools_prompt = "If I feel the need to look something up, whether from the web or from your own " \
                                    "memory, I will append [search] or [recall] and will then tell you I am either " \
@@ -154,9 +164,6 @@ class DialogueAgentWithTools(DialogueAgent):
                     HumanMessage(content="\n".join(self.message_history + [self.prefix])),
                 ]
             )
-
-            if "[" in message.content:
-                self.needs_to_think_more = True
 
         else:
             agent_chain = SelfModifiableAgentExecutor.from_agent_and_tools(
@@ -179,6 +186,9 @@ class DialogueAgentWithTools(DialogueAgent):
                 )
             )
 
+        if "[" in message.content:
+            self.needs_to_think_more = True
+        else:
             self.needs_to_think_more = False
 
         if self.TTSEngine:
