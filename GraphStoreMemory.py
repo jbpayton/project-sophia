@@ -2,18 +2,47 @@ import json
 
 from GraphStore import GraphStore
 from langchain.schema import SystemMessage, HumanMessage
+import threading
 
 
-class GraphStoreMemory():
+class GraphStoreMemory:
     def __init__(self, model):
+        self.thread_lock = threading.Lock()
+        self.message_buffer = []
+        self.graph_processing_size = 10  # number of messages to process at a time
+        self.graph_processing_overlap = 5  # number of messages to overlap between processing
         self.current_topic = "<nothing yet>"
         self.topics = []
         self.relevant_entities = ["<not yet set>"]
         self.entities_db = GraphStore("entities")
         self.model = model
-        self.name = "CogDBGraphStore"
+        self.name = "GraphStoreMemory"
 
-    def get_graph_from_conversation(self, message_history):
+    def accept_message(self, message):
+        self.message_buffer.append(message)
+        if len(self.message_buffer) >= self.graph_processing_size:
+            # create a copy of the message buffer to process
+            message_buffer_copy = self.message_buffer.copy()
+            self.message_buffer = self.message_buffer[-self.graph_processing_overlap:]
+
+            # process the batch of messages in a separate thread (as a one shot daemon)
+            threading.Thread(target=self.process_buffer, args=(message_buffer_copy,), daemon=True).start()
+
+    def process_buffer(self, message_buffer):
+        # lock the thread
+        self.thread_lock.acquire()
+        print("\nStarting to process a batch of messages")
+        try:
+            # get the graph from the conversation
+            self.update_graph_from_conversation(message_buffer)
+            network_string = self.get_network_for_relevant_entities(simplify=True)
+            print("Network string: " + network_string)
+        finally:
+            # release the lock
+            self.thread_lock.release()
+            print("\nFinished processing a batch of messages")
+
+    def update_graph_from_conversation(self, message_history):
         build_topic_graphs_prompt = "You are an AI who reads conversations and provides lists of topics and triples " \
                                     "to make up knowledge graphs based " \
                                     "on entities discussed in the conversation and the relationships between them. " \
@@ -66,16 +95,20 @@ class GraphStoreMemory():
         # Parse the message.content and add to the graph
         data = json.loads(message.content)
         for triple in data['triples']:
-            subject = triple['subject']
-            predicate = triple['predicate']
-            obj = triple['object']
+            try:
+                subject = triple['subject']
+                predicate = triple['predicate']
+                obj = triple['object']
+            except KeyError:
+                print("Error: Triple missing subject, predicate, or object")
+                continue
             self.entities_db.add_edge(subject, predicate, obj)
 
         self.topics = data['topics']
         self.current_topic = data['current_topic']
         self.relevant_entities = data['entities']
 
-        print("Into network")
+        self.entities_db.save_to_file()
 
     def get_current_topic(self):
         return self.current_topic
@@ -89,44 +122,54 @@ class GraphStoreMemory():
     def simplify_graph(self):
 
         network_string = self.get_network_for_relevant_entities()
-        build_topic_graphs_prompt = "You are a tool to prune and simplify knowledge graphs. " \
-                                    "You are careful not to destroy data, while removing unnecessary " \
-                                    "entities and predicates, as well as merging what needs to be merged. Also, " \
-                                    "remove inconsistent or redundant links" \
-
+        build_topic_graphs_prompt = 'You are a tool designed to prune and simplify conversational knowledge graphs. ' \
+                                    'Your goal is to meticulously remove duplicate entities and predicates that ' \
+                                    'don\'t contribute to the understanding of a conversation, while preserving ' \
+                                    'valuable data. If predicates are synonymous, consolidate them. Remove ' \
+                                    'inconsistent links, but take care with redundant ones as they can serve as ' \
+                                    'backups. It\'s crucial, however, to respect the individuality of distinct ' \
+                                    'entities involved in the conversation, like "Sophia" and "Joey". They should ' \
+                                    'remain separate to maintain the integrity of the conversation. Please ensure ' \
+                                    'that you don\'t destroy too many precious memories of the agent as they are ' \
+                                    'needed for optimal function. Once you have made your pruning decisions, ' \
+                                    'present them for validation before final application to prevent any unintended ' \
+                                    'alterations. '
         message = self.model(
             [
                 SystemMessage(role=self.name, content=build_topic_graphs_prompt),
-                HumanMessage(content="\nPlease format this in in JSON, in this format (for example):"
-                                     "{"
-                                     " \"entities_to_remove\": [\r\n"
-                                     "    \"entity 1\",\r\n"
-                                     "    \"entity 2\",\r\n"
-                                     " ],\r\n"
-                                     " \"predicates_to_remove\": [\r\n"
-                                     "    \"entity 1\",\r\n"
-                                     "    \"entity 2\",\r\n"
-                                     " ],\r\n"
-                                     "  \"entities_to_merge\": [\r\n"
-                                     "    {\r\n"
-                                     "      \"id_to_keep\": \"Joey\",\r\n"
-                                     "      \"id_to_merge\": \"Joseph\",\r\n"
-                                     "    },..."
-                                     " ],\r\n"
-                                     "  \"predicates_to_merge\": [\r\n"
-                                     "    {\r\n"
-                                     "      \"id_to_keep\": \"Joey\",\r\n"
-                                     "      \"id_to_merge\": \"Joseph\",\r\n"
-                                     "    },..."
-                                     " ],\r\n"
-                                     "  \"links_to_remove\": [\r\n"
-                                     "    {\r\n"
-                                     "      \"id_1\": \"Joey\",\r\n"
-                                     "      \"predicate\": \"is\",\r\n"
-                                     "      \"id_2\": \"Joey\",\r\n"
-                                     "    },..."
-                                     " ],\r\n"
-                                     " \nThe network is as follows:\n" + network_string),
+                HumanMessage(
+                    content="\nPlease format this in JSON, in this format (this is just an example). You can add more "
+                            "items to each list as needed: "
+                            "{"
+                            " \"entities_to_remove\": [\r\n"
+                            "    \"entity 1\",\r\n"
+                            "    \"entity 2\"\r\n"
+                            " ],\r\n"
+                            " \"predicates_to_remove\": [\r\n"
+                            "    \"entity 1\",\r\n"
+                            "    \"entity 2\"\r\n"
+                            " ],\r\n"
+                            "  \"entities_to_merge\": [\r\n"
+                            "    {\r\n"
+                            "      \"id_to_keep\": \"entity 3\",\r\n"
+                            "      \"id_to_merge\": \"entity 4\"\r\n"
+                            "    }\r\n"
+                            " ],\r\n"
+                            "  \"predicates_to_merge\": [\r\n"
+                            "    {\r\n"
+                            "      \"id_to_keep\": \"predicate_1\",\r\n"
+                            "      \"id_to_merge\": \"predicate_2\"\r\n"
+                            "    }\r\n"
+                            " ],\r\n"
+                            "  \"links_to_remove\": [\r\n"
+                            "    {\r\n"
+                            "      \"id_1\": \"entity 6\",\r\n"
+                            "      \"predicate\": \"predicate 56\",\r\n"
+                            "      \"id_2\": \"entity 7\"\r\n"
+                            "    }\r\n"
+                            " ]\r\n"
+                            "}\n\nThe network is as follows:\n" + network_string),
+
             ]
         )
         print(message.content)
@@ -144,4 +187,3 @@ class GraphStoreMemory():
             entity_network_str = self.get_network_for_relevant_entities()
 
         return entity_network_str
-

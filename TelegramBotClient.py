@@ -16,7 +16,8 @@ config = util.load_config_file()
 # if the config file is not found, (avatar not found in profile) create a new one
 if 'Avatar' not in config:
     config = util.create_config_file()
-#initialize agent
+
+# initialize agent
 profile_name = config['Avatar']['profile_name']
 
 profile = util.load_profile(profile_name)
@@ -36,27 +37,22 @@ class IsAllowedUser(telebot.custom_filters.SimpleCustomFilter):
 # To register filter, you need to use method add_custom_filter.
 bot.add_custom_filter(IsAllowedUser())
 
+
 @bot.message_handler(commands=['start', 'hello'], is_allowed_user=True)
 def send_welcome(message):
-
-        avatar.receive(message.from_user.first_name, "Hello!")
-        avatar_response = avatar.send()
-        bot.send_message(message.chat.id, avatar_response)
+    avatar.receive(message.from_user.first_name, "Hello!")
+    avatar_response = avatar.send()
+    bot.send_message(message.chat.id, avatar_response)
 
 
 @bot.message_handler(func=lambda msg: True, is_allowed_user=True)
 def echo_all(message):
+    avatar.receive(message.from_user.first_name, message.text)
+
     while True:
-        avatar.receive(message.from_user.first_name, message.text)
+        bot.send_chat_action(chat_id=message.chat.id, action="typing")
         avatar_response = avatar.send()
         bot.send_message(message.chat.id, avatar_response)
-
-        # every 10 messages, we will get a new graph
-        if len(avatar.message_history) % 1 == 0:
-            avatar.graph_store.get_graph_from_conversation(avatar.message_history)
-
-            graph_string = avatar.graph_store.get_network_for_relevant_entities(simplify=True)
-            print(graph_string)
 
         if not avatar.needs_to_think_more:
             break

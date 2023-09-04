@@ -141,6 +141,14 @@ class DialogueAgentWithTools(DialogueAgent):
         self.graph_store = GraphStoreMemory(model=chat)
         ToolRegistry().set_tools(name, self.tools)
 
+    def receive(self, name: str, message: str) -> None:
+        # create a timestamped message
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        message_to_log = f"({timestamp}) {name}: {message}"
+
+        self.graph_store.accept_message(message_to_log)
+        self.message_history.append(message_to_log)
+
     def send(self) -> str:
         """
         Applies the chatmodel to the message history
@@ -196,7 +204,13 @@ class DialogueAgentWithTools(DialogueAgent):
             else:
                 self.TTSEngine.speak(spoken)
 
-        self.message_history.append(f"{self.name}: {message.content}")
+        # create a timestamped message
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        message_to_log = f"({timestamp}) {self.name}: {message.content}"
+
+        self.graph_store.accept_message(message_to_log)
+        self.message_history.append(message_to_log)
+
         return message.content
 
 class UserAgent(DialogueAgent):

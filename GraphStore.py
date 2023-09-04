@@ -109,14 +109,18 @@ class GraphStore:
             edges[:] = [edge for edge in edges if edge['predicate'] != predicate]
 
     def get_network_string(self, id):
-        network_str = f"{id}\n"
+        network_str = ""
         if id in self.edges:
             predicates = defaultdict(list)
             for edge in self.edges[id]:
                 predicates[edge['predicate']].append(edge['vertex'].id)
 
-            for predicate, target_vertices in predicates.items():
-                network_str += f"  {predicate}: " + ", ".join(target_vertices) + "\n"
+            if predicates:  # Check if there are any predicates
+                network_str = f"{id}\n"
+                for predicate, target_vertices in predicates.items():
+                    # Filtering out None values before joining
+                    target_vertices = [str(v) for v in target_vertices if v is not None]
+                    network_str += f"  {predicate}: " + ", ".join(target_vertices) + "\n"
 
         return network_str
 
