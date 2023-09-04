@@ -1,7 +1,7 @@
 import time
 import re
 from typing import List, Dict, Optional, Any, Tuple
-from CogDBGraphStore import CogDBGraphStore
+from GraphStoreMemory import GraphStoreMemory
 
 from langchain import PromptTemplate, LLMChain
 from langchain.agents import StructuredChatAgent, AgentExecutor
@@ -138,7 +138,7 @@ class DialogueAgentWithTools(DialogueAgent):
         chat = ChatOpenAI(
             model_name='gpt-3.5-turbo-16k'
         )
-        self.graph_store = CogDBGraphStore(model=chat)
+        self.graph_store = GraphStoreMemory(model=chat)
         ToolRegistry().set_tools(name, self.tools)
 
     def send(self) -> str:
@@ -146,10 +146,6 @@ class DialogueAgentWithTools(DialogueAgent):
         Applies the chatmodel to the message history
         and returns the message string
         """
-
-        # every 10 messages, we will get a new graph
-        if len(self.message_history) % 10 == 0:
-            self.graph_store.get_graph_from_conversation(self.message_history)
 
         if not self.needs_to_think_more:
             ask_for_tools_prompt = "If I feel the need to look something up, whether from the web or from your own " \
