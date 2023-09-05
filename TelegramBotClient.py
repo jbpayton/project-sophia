@@ -53,10 +53,16 @@ def echo_all(message):
         bot.send_chat_action(chat_id=message.chat.id, action="typing")
         avatar_response = avatar.send()
         bot.send_message(message.chat.id, avatar_response)
-
+        if avatar.has_picture_to_show:
+            bot.send_photo(message.chat.id, photo=open(avatar.image_to_show, 'rb'))
+            avatar.has_picture_to_show = False
+            avatar.needs_to_think_more = False
+            break
         if not avatar.needs_to_think_more:
             break
         bot.send_chat_action(chat_id=message.chat.id, action="typing")
+
+
 
 
 print("Bot is running...")

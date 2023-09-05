@@ -1,12 +1,50 @@
 import json
+import time
+import os
+from datetime import datetime, timedelta
 
 from GraphStore import GraphStore
 from langchain.schema import SystemMessage, HumanMessage
 import threading
 
 
+class ConversationFileLogger:
+    def __init__(self, directory="logs"):
+        self.directory = directory
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+    def get_log_file_path(self, date_str):
+        return os.path.join(self.directory, f"{date_str}.txt")
+
+    def log_message(self, message_to_log):
+        # Write the message to the log file
+        date_str = time.strftime("%Y-%m-%d", time.localtime())
+        with open(self.get_log_file_path(date_str), 'a') as f:
+            f.write(message_to_log + '\n')
+
+    def load_last_n_lines(self, n):
+        lines_to_return = []
+        current_date = datetime.now()
+        while n > 0 and current_date > datetime(2000, 1, 1):  # Assuming logs won't be from before the year 2000
+            date_str = current_date.strftime("%Y-%m-%d")
+            file_path = self.get_log_file_path(date_str)
+            if os.path.exists(file_path):
+                with open(file_path, 'r') as f:
+                    lines = f.readlines()
+                    if len(lines) <= n:
+                        lines_to_return = lines + lines_to_return
+                        n -= len(lines)
+                    else:
+                        lines_to_return = lines[-n:] + lines_to_return
+                        n = 0
+            current_date -= timedelta(days=1)
+
+        return lines_to_return
+
+
 class GraphStoreMemory:
-    def __init__(self, model):
+    def __init__(self, model, agent_name=""):
         self.thread_lock = threading.Lock()
         self.message_buffer = []
         self.graph_processing_size = 10  # number of messages to process at a time
@@ -17,9 +55,11 @@ class GraphStoreMemory:
         self.entities_db = GraphStore("entities")
         self.model = model
         self.name = "GraphStoreMemory"
+        self.conversation_logger = ConversationFileLogger(agent_name + "_logs")
 
     def accept_message(self, message):
         self.message_buffer.append(message)
+        self.conversation_logger.log_message(message)
         if len(self.message_buffer) >= self.graph_processing_size:
             # create a copy of the message buffer to process
             message_buffer_copy = self.message_buffer.copy()
@@ -42,25 +82,42 @@ class GraphStoreMemory:
             self.thread_lock.release()
             print("\nFinished processing a batch of messages")
 
-    def update_graph_from_conversation(self, message_history):
-        build_topic_graphs_prompt = "You are an AI who reads conversations and provides lists of topics and triples " \
-                                    "to make up knowledge graphs based " \
-                                    "on entities discussed in the conversation and the relationships between them. " \
-                                    "The graph should be built from RDF triples of the form (subject, predicate, " \
-                                    "object). For example,  (I, like, apples) or (Bob, is a father to, Ann). "
+    def update_graph_from_conversation(self, conversation_buffer):
+        build_topic_graphs_prompt = f"""You are an AI who reads conversations and builds knowledge graphs based on the 
+        entities discussed and the relationships between them. These knowledge graphs are constructed from RDF 
+        triples of the form (subject, predicate, object), e.g., (I, like, apples) or (Bob, is a father to, Ann). 
+
+        To ensure the consistency and reusability of the knowledge graphs, consider the following guidelines while 
+        identifying the RDF triples: 
+
+        1. **Verb Form**: Use consistent verb forms (preferably base form) for predicates, e.g., "support", "love", 
+        "dislike". 2. **Specific Relationships**: Identify specific, directional verbs that clearly indicate the 
+        nature of the relationship between the subject and the object, e.g., "is a parent of", "works at". 3. 
+        **Controlled Vocabulary**: Stick to a predefined list of predicates to describe relationships, 
+        and map similar predicates to a standard term to maintain consistency. 4. **Hierarchical Relationships**: 
+        Where possible, create hierarchical relationships between predicates to group similar relationships together. 
+        5. **NLP Techniques**: Utilize techniques such as lemmatization to reduce predicates to their base form, 
+        and employ NLP techniques to extract entities and relationships more accurately from the conversation. 
+
+        Your task is to identify a list of topics (high-level conversation topics), the current topic, and the RDF 
+        triples from this conversation. Also, avoid adding duplicate entries and focus on describing entities through 
+        relationships rather than capturing actions. 
+
+        Additionally, identify the current topic and the 5 most relevant entities to the conversation. The previously 
+        determined current topic was "{self.current_topic}" and the relevant entities were "{', '.join(self.relevant_entities)}". 
+
+        Please proceed with generating the knowledge graph based on the conversation provided.
+        """
 
         request_prompt = "\nPlease get a list of topics (high level conversation topics), the current topic, and the " \
                          "RDF triples (subject, predicate, object) from this conversation. " \
-                         "Also, take care to not add duplicate entries. " \
-                         "Please avoid capturing actions and stick more to describing the entities via " \
-                         "relationships. Also get the current topic and 5 most relevant entities " \
-                         "to the conversation. The previously determined current topic was " + self.current_topic + \
-                         " and the relevant entities were " + ",".join(self.relevant_entities) + "\n"
+                         "Also, take care to not add duplicate entries. Also get the current topic and 5 most " \
+                         "relevant entities to the conversation."
 
         message = self.model(
             [
                 SystemMessage(role=self.name, content=build_topic_graphs_prompt),
-                HumanMessage(content=request_prompt + ":\n".join(message_history)),
+                HumanMessage(content=request_prompt + ":\n".join(conversation_buffer)),
             ]
         )
         print("Got message: " + message.content)
@@ -80,9 +137,9 @@ class GraphStoreMemory:
                                      " ],\r\n"
                                      "  \"triples\": [\r\n"
                                      "    {\r\n"
-                                     "      \"subject\": \"Sophia\",\r\n"
-                                     "      \"predicate\": \"cares about\",\r\n"
-                                     "      \"object\": \"Joey\"\r\n"
+                                     "      \"subject\": \"entity 1\",\r\n"
+                                     "      \"predicate\": \"predicate\",\r\n"
+                                     "      \"object\": \"entity 2\"\r\n"
                                      "    },..."
                                      " ],\r\n"
                                      " \nTriples should link attributes and relationships to the subject, "

@@ -14,6 +14,7 @@ from langchain.tools import Tool, DuckDuckGoSearchRun
 from langchain.utils import get_color_mapping
 
 from tools import paged_web_browser
+from tools import image_generator_tool
 from tools.ToolRegistry import ToolRegistry
 
 
@@ -135,10 +136,13 @@ class DialogueAgentWithTools(DialogueAgent):
         self.tools = tools
         self.TTSEngine = TTSEngine
         self.needs_to_think_more = False
+        self.has_picture_to_show = False
+        self.image_to_show = ""
         chat = ChatOpenAI(
             model_name='gpt-3.5-turbo-16k'
         )
-        self.graph_store = GraphStoreMemory(model=chat)
+        self.graph_store = GraphStoreMemory(model=chat, agent_name=name)
+        self.message_history = self.graph_store.conversation_logger.load_last_n_lines(100)
         ToolRegistry().set_tools(name, self.tools)
 
     def receive(self, name: str, message: str) -> None:
@@ -157,9 +161,8 @@ class DialogueAgentWithTools(DialogueAgent):
 
         if not self.needs_to_think_more:
             ask_for_tools_prompt = "If I feel the need to look something up, whether from the web or from your own " \
-                                   "memory, I will append [search] or [recall] and will then tell you I am either " \
-                                   "thinking or searching for something. I will say a lot and stall for time while I " \
-                                     "am thinking. If I am searching, I will tell you what I am searching for."
+                                   "memory, I will append [search] or [recall] or [generate image] and will then tell you I will either " \
+                                   "think or search for something or take a picture. Prompting again will trigger the search, recall, or image generator. "
 
             print(f"{self.name}: ")
             message = self.model(
@@ -170,6 +173,7 @@ class DialogueAgentWithTools(DialogueAgent):
             )
 
         else:
+            self.needs_to_think_more = False
             agent_chain = SelfModifiableAgentExecutor.from_agent_and_tools(
                 agent=StructuredChatAgent.from_llm_and_tools(llm=self.model,
                                                              tools=self.tools),
@@ -185,15 +189,22 @@ class DialogueAgentWithTools(DialogueAgent):
             message = AIMessage(
                 content=agent_chain.run(
                     input="\n".join(
-                        [self.system_message.content] + self.message_history + [self.prefix]
+                        [self.system_message.content] + self.message_history[:-1] + [self.prefix]
                     )
                 )
             )
 
         if "[" in message.content:
-            self.needs_to_think_more = True
-        else:
-            self.needs_to_think_more = False
+            bracket_contents = re.search(r'\[.*?\]', message.content).group(0)[1:-1]
+            if ".png" in bracket_contents:
+                self.has_picture_to_show = True
+                # get the string between the brackets
+                self.image_to_show = bracket_contents
+            elif "search" in bracket_contents:
+                self.needs_to_think_more = True
+            elif "generate image" in bracket_contents:
+                self.needs_to_think_more = True
+
 
         if self.TTSEngine:
             spoken = message.content
@@ -244,7 +255,8 @@ def get_avatar_agent(profile=None, avatar_tts=None):
     system_prompt_avatar = SystemMessage(role=profile['name'],
                                          content=profile['personality'])
     tools = [DuckDuckGoSearchRun(),
-             paged_web_browser]
+             paged_web_browser,
+             image_generator_tool]
 
     # Initialize our agent with role and system prompt
     avatar = DialogueAgentWithTools(name=profile['name'],

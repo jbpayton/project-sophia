@@ -47,14 +47,11 @@ class GraphStore:
         if id2 not in self.vertices:
             self.add_vertex(id2)
 
-        vertex1 = self.get_vertex(id1)
         vertex2 = self.get_vertex(id2)
 
         # Check to avoid duplicate edges
         if not any(edge['vertex'].id == id2 and edge['predicate'] == predicate for edge in self.edges[id1]):
             self.edges[id1].append({'vertex': vertex2, 'predicate': predicate})
-            self.edges[id2].append({'vertex': vertex1, 'predicate': predicate})  # Assuming undirected graph
-
 
     def remove_edge(self, id1, predicate, id2, remove_orphans=False):
         if id1 in self.edges:
@@ -99,24 +96,49 @@ class GraphStore:
             del self.vertices[id_to_merge]
 
     def merge_predicates(self, predicate_to_keep, predicate_to_merge):
+        # Create a dictionary to hold unique objects for each predicate
+        unique_objects_per_predicate = defaultdict(set)
+
+        # Iterate through all edges and collect unique objects per predicate
         for edge_list in self.edges.values():
             for edge in edge_list:
+                unique_objects_per_predicate[edge['predicate']].add(edge['vertex'].id)
+
+        # If the predicate to merge exists in the dictionary, merge its unique objects with the predicate to keep
+        if predicate_to_merge in unique_objects_per_predicate:
+            unique_objects_per_predicate[predicate_to_keep].update(unique_objects_per_predicate[predicate_to_merge])
+            del unique_objects_per_predicate[predicate_to_merge]
+
+        # Now update the edges with the new list of unique objects for the predicate to keep
+        for edge_list in self.edges.values():
+            new_edge_list = []
+            for edge in edge_list:
                 if edge['predicate'] == predicate_to_merge:
-                    edge['predicate'] = predicate_to_keep
+                    # Change the predicate to the new one and check if the object is unique
+                    if edge['vertex'].id in unique_objects_per_predicate[predicate_to_keep]:
+                        edge['predicate'] = predicate_to_keep
+                        new_edge_list.append(edge)
+                        unique_objects_per_predicate[predicate_to_keep].remove(
+                            edge['vertex'].id)  # Remove the object from the set to avoid duplicates
+                else:
+                    new_edge_list.append(edge)
+
+            edge_list.clear()
+            edge_list.extend(new_edge_list)
 
     def remove_predicate(self, predicate):
         for edges in self.edges.values():
             edges[:] = [edge for edge in edges if edge['predicate'] != predicate]
 
-    def get_network_string(self, id):
+    def get_network_string(self, entity):
         network_str = ""
-        if id in self.edges:
+        if entity in self.edges:
             predicates = defaultdict(list)
-            for edge in self.edges[id]:
+            for edge in self.edges[entity]:
                 predicates[edge['predicate']].append(edge['vertex'].id)
 
             if predicates:  # Check if there are any predicates
-                network_str = f"{id}\n"
+                network_str = f"{entity}\n"
                 for predicate, target_vertices in predicates.items():
                     # Filtering out None values before joining
                     target_vertices = [str(v) for v in target_vertices if v is not None]
