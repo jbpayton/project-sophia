@@ -42,9 +42,9 @@ class GraphStore:
         return list(predicates)
 
     def add_edge(self, id1, predicate, id2):
-        if id1 not in self.vertices:
+        if str(id1) not in self.vertices:
             self.add_vertex(id1)
-        if id2 not in self.vertices:
+        if str(id2) not in self.vertices:
             self.add_vertex(id2)
 
         vertex2 = self.get_vertex(id2)

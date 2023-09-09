@@ -17,10 +17,23 @@ class ConversationFileLogger:
     def get_log_file_path(self, date_str):
         return os.path.join(self.directory, f"{date_str}.txt")
 
+    def log_tool_output(self, tool_name, output):
+        # create a directory for the tool if it doesn't exist
+        tool_directory = os.path.join(self.directory, tool_name)
+        if not os.path.exists(tool_directory):
+            os.makedirs(tool_directory)
+            # create a timestamped file for the output (one output per file)
+        timestamp = time.strftime("%Y-%m-%d %H%M%S", time.localtime())
+        file_path = os.path.join(tool_directory, f"{timestamp}.txt")
+        with open(file_path, 'w', encoding="utf-8") as f:
+            f.write(output)
+        # return the path to the file
+        return file_path
+
     def log_message(self, message_to_log):
         # Write the message to the log file
         date_str = time.strftime("%Y-%m-%d", time.localtime())
-        with open(self.get_log_file_path(date_str), 'a') as f:
+        with open(self.get_log_file_path(date_str), 'a', encoding="utf-8") as f:
             f.write(message_to_log + '\n')
 
     def load_last_n_lines(self, n):

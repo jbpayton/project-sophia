@@ -1,6 +1,12 @@
 import time
 import re
-from typing import List, Dict, Optional, Any, Tuple
+from typing import List, Dict, Optional, Any, Tuple, Union
+
+from langchain.agents.agent import ExceptionTool
+from langchain.agents.agent_toolkits import FileManagementToolkit
+from langchain.agents.tools import InvalidTool
+from langchain.chains.summarize import load_summarize_chain
+
 from GraphStoreMemory import GraphStoreMemory
 
 from langchain import PromptTemplate, LLMChain
@@ -9,8 +15,9 @@ from langchain.callbacks import StreamingStdOutCallbackHandler
 from langchain.callbacks.manager import CallbackManagerForChainRun
 from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
-from langchain.schema import SystemMessage, HumanMessage, AIMessage, AgentAction, AgentFinish
-from langchain.tools import Tool, DuckDuckGoSearchRun
+from langchain.schema import SystemMessage, HumanMessage, AIMessage, AgentAction, AgentFinish, OutputParserException, \
+    Document
+from langchain.tools import Tool, DuckDuckGoSearchRun, BaseTool
 from langchain.utils import get_color_mapping
 
 from tools import paged_web_browser
@@ -20,11 +27,11 @@ from tools.ToolRegistry import ToolRegistry
 
 class DialogueAgent:
     def __init__(
-        self,
-        name: str,
-        system_message: SystemMessage = None,
-        model = None,
-        TTSEngine=None,
+            self,
+            name: str,
+            system_message: SystemMessage = None,
+            model=None,
+            TTSEngine=None,
     ) -> None:
         self.name = name
         self.system_message = system_message
@@ -63,6 +70,102 @@ class SelfModifiableAgentExecutor(AgentExecutor):
     @property
     def _chain_type(self) -> str:
         pass
+
+    def _take_next_step(
+            self,
+            name_to_tool_map: Dict[str, BaseTool],
+            color_mapping: Dict[str, str],
+            inputs: Dict[str, str],
+            intermediate_steps: List[Tuple[AgentAction, str]],
+            run_manager: Optional[CallbackManagerForChainRun] = None,
+    ) -> Union[AgentFinish, List[Tuple[AgentAction, str]]]:
+        """Take a single step in the thought-action-observation loop.
+
+        Override this to take control of how the agent makes and acts on choices.
+        """
+        try:
+            intermediate_steps = self._prepare_intermediate_steps(intermediate_steps)
+
+            # Call the LLM to see what to do.
+            output = self.agent.plan(
+                intermediate_steps,
+                callbacks=run_manager.get_child() if run_manager else None,
+                **inputs,
+            )
+        except OutputParserException as e:
+            if isinstance(self.handle_parsing_errors, bool):
+                raise_error = not self.handle_parsing_errors
+            else:
+                raise_error = False
+            if raise_error:
+                raise e
+            text = str(e)
+            if isinstance(self.handle_parsing_errors, bool):
+                if e.send_to_llm:
+                    observation = str(e.observation)
+                    text = str(e.llm_output)
+                else:
+                    observation = "Invalid or incomplete response"
+            elif isinstance(self.handle_parsing_errors, str):
+                observation = self.handle_parsing_errors
+            elif callable(self.handle_parsing_errors):
+                observation = self.handle_parsing_errors(e)
+            else:
+                raise ValueError("Got unexpected type of `handle_parsing_errors`")
+            output = AgentAction("_Exception", observation, text)
+            if run_manager:
+                run_manager.on_agent_action(output, color="green")
+            tool_run_kwargs = self.agent.tool_run_logging_kwargs()
+            observation = ExceptionTool().run(
+                output.tool_input,
+                verbose=self.verbose,
+                color=None,
+                callbacks=run_manager.get_child() if run_manager else None,
+                **tool_run_kwargs,
+            )
+            return [(output, observation)]
+        # If the tool chosen is the finishing tool, then we end and return.
+        if isinstance(output, AgentFinish):
+            return output
+        actions: List[AgentAction]
+        if isinstance(output, AgentAction):
+            actions = [output]
+        else:
+            actions = output
+        result = []
+        for agent_action in actions:
+            if run_manager:
+                run_manager.on_agent_action(agent_action, color="green")
+            # Otherwise we lookup the tool
+            if agent_action.tool in name_to_tool_map:
+                tool = name_to_tool_map[agent_action.tool]
+                return_direct = tool.return_direct
+                color = color_mapping[agent_action.tool]
+                tool_run_kwargs = self.agent.tool_run_logging_kwargs()
+                if return_direct:
+                    tool_run_kwargs["llm_prefix"] = ""
+                # We then call the tool on the tool input to get an observation
+                observation = tool.run(
+                    agent_action.tool_input,
+                    verbose=self.verbose,
+                    color=color,
+                    callbacks=run_manager.get_child() if run_manager else None,
+                    **tool_run_kwargs,
+                )
+            else:
+                tool_run_kwargs = self.agent.tool_run_logging_kwargs()
+                observation = InvalidTool().run(
+                    {
+                        "requested_tool_name": agent_action.tool,
+                        "available_tool_names": list(name_to_tool_map.keys()),
+                    },
+                    verbose=self.verbose,
+                    color=None,
+                    callbacks=run_manager.get_child() if run_manager else None,
+                    **tool_run_kwargs,
+                )
+            result.append((agent_action, observation))
+        return result
 
     def _call(
             self,
@@ -125,12 +228,12 @@ class SelfModifiableAgentExecutor(AgentExecutor):
 
 class DialogueAgentWithTools(DialogueAgent):
     def __init__(
-        self,
+            self,
             name: str,
             system_message: SystemMessage,
             model,
             tools: List,
-            TTSEngine = None,
+            TTSEngine=None,
     ) -> None:
         super().__init__(name, system_message, model)
         self.tools = tools
@@ -160,14 +263,17 @@ class DialogueAgentWithTools(DialogueAgent):
         """
 
         if not self.needs_to_think_more:
-            ask_for_tools_prompt = "If I feel the need to look something up, whether from the web or from your own " \
-                                   "memory, I will append [search] or [recall] or [generate image] and will then tell you I will either " \
-                                   "think or search for something or take a picture. Prompting again will trigger the search, recall, or image generator. "
+            conversation_mode_prompt = "You can choose to express your emotions by leading a sentence with " \
+                                       "parenthesis with your emotional state. If I feel the need to use a tool, " \
+                                       "I will append [search] or [recall] or [generate image] this will activate " \
+                                       "a mode where deeper thought or tools can be used. " \
+                                       "Prompting again will trigger the search, recall, or image generator. " \
+                                       "Do not use json to activate a tool until you are in tool mode"
 
             print(f"{self.name}: ")
             message = self.model(
                 [
-                    SystemMessage(role=self.name, content=self.system_message.content + ask_for_tools_prompt),
+                    SystemMessage(role=self.name, content=self.system_message.content + conversation_mode_prompt),
                     HumanMessage(content="\n".join(self.message_history + [self.prefix])),
                 ]
             )
@@ -180,19 +286,40 @@ class DialogueAgentWithTools(DialogueAgent):
                 tools=self.tools,
                 max_iterations=10,
                 verbose=True,
-                memory=ConversationBufferMemory(
-                    memory_key="chat_history", return_messages=True
-                ),
+                memory=ConversationBufferMemory(memory_key="chat_history", input_key='input', output_key="output"),
+                return_intermediate_steps=True,
                 name=self.name
             )
 
-            message = AIMessage(
-                content=agent_chain.run(
-                    input="\n".join(
-                        [self.system_message.content] + self.message_history[:-1] + [self.prefix]
-                    )
-                )
-            )
+            # summarize conversation to this point
+            summary_chain = load_summarize_chain(ChatOpenAI(temperature=0,
+                                                            model_name="gpt-3.5-turbo-16k"),
+                                                 chain_type="stuff")
+
+            # turn the conversation history into a list of documents
+            docs = [Document(page_content=msg, metadata={"source": "local"}) for msg in self.message_history[-100:-1]]
+            summary = "This is a summary of the conversation so far: " + summary_chain.run(docs)
+            recent_history = ["These are the last few exchanges: "] + self.message_history[-30:-1]
+
+            response = agent_chain({"input": "\n".join([self.system_message.content] + [summary] + recent_history)})
+
+            message = AIMessage(content=response["output"])
+
+            # go through the intermediate steps and log them
+            for step in response["intermediate_steps"]:
+                step_input = step[0]
+                step_output = step[1]
+
+                if isinstance(step_input, AgentAction):
+                    # if output is longer than 256 characters, write it to a file
+                    if len(step_output) > 256:
+                        step_output = self.graph_store.conversation_logger.log_tool_output(step_input.tool, step_output)
+
+                    # create a timestamped message
+                    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                    string_to_log = f"({timestamp}) System: Tool:{step_input.tool} Tool Input:{step_input.tool_input} Tool Output:{step_output} "
+                    self.graph_store.accept_message(string_to_log)
+                    self.message_history.append(string_to_log)
 
         if "[" in message.content:
             bracket_contents = re.search(r'\[.*?\]', message.content).group(0)[1:-1]
@@ -204,7 +331,6 @@ class DialogueAgentWithTools(DialogueAgent):
                 self.needs_to_think_more = True
             elif "generate image" in bracket_contents:
                 self.needs_to_think_more = True
-
 
         if self.TTSEngine:
             spoken = message.content
@@ -224,13 +350,14 @@ class DialogueAgentWithTools(DialogueAgent):
 
         return message.content
 
+
 class UserAgent(DialogueAgent):
     def __init__(
-        self,
-        name: str,
-        system_message: SystemMessage = None,
-        model = None,
-        stt_engine = None,
+            self,
+            name: str,
+            system_message: SystemMessage = None,
+            model=None,
+            stt_engine=None,
     ) -> None:
         self.name = name
         self.system_message = system_message
@@ -254,9 +381,15 @@ def get_avatar_agent(profile=None, avatar_tts=None):
     # Define system prompts for our  agent
     system_prompt_avatar = SystemMessage(role=profile['name'],
                                          content=profile['personality'])
+
+    # initialize file management tools
+    file_tools = FileManagementToolkit(
+        selected_tools=["read_file", "write_file", "list_directory", "copy_file", "move_file", "file_delete"]
+    ).get_tools()
+
     tools = [DuckDuckGoSearchRun(),
              paged_web_browser,
-             image_generator_tool]
+             image_generator_tool] + file_tools
 
     # Initialize our agent with role and system prompt
     avatar = DialogueAgentWithTools(name=profile['name'],
