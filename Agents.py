@@ -262,11 +262,13 @@ class DialogueAgentWithTools(DialogueAgent):
         and returns the message string
         """
 
+        print("Number of messages in history: ", len(self.message_history))
+
         if not self.needs_to_think_more:
             conversation_mode_prompt = "You can choose to express your emotions by leading a sentence with " \
                                        "parenthesis with your emotional state. If I feel the need to use a tool, " \
-                                       "I will append [search] or [recall] or [generate image] this will activate " \
-                                       "a mode where deeper thought or tools can be used. " \
+                                       "I will append [search] or [recall] or [files] or [generate image] " \
+                                       "this will activate a mode where deeper thought or tools can be used. " \
                                        "Prompting again will trigger the search, recall, or image generator. " \
                                        "Do not use json to activate a tool until you are in tool mode"
 
@@ -299,6 +301,7 @@ class DialogueAgentWithTools(DialogueAgent):
             # turn the conversation history into a list of documents
             docs = [Document(page_content=msg, metadata={"source": "local"}) for msg in self.message_history[-100:-1]]
             summary = "This is a summary of the conversation so far: " + summary_chain.run(docs)
+            print(summary)
             recent_history = ["These are the last few exchanges: "] + self.message_history[-30:-1]
 
             response = agent_chain({"input": "\n".join([self.system_message.content] + [summary] + recent_history)})
@@ -328,6 +331,10 @@ class DialogueAgentWithTools(DialogueAgent):
                 # get the string between the brackets
                 self.image_to_show = bracket_contents
             elif "search" in bracket_contents:
+                self.needs_to_think_more = True
+            elif "files" in bracket_contents:
+                self.needs_to_think_more = True
+            elif "recall" in bracket_contents:
                 self.needs_to_think_more = True
             elif "generate image" in bracket_contents:
                 self.needs_to_think_more = True
