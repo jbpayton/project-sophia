@@ -7,7 +7,7 @@ from langchain.agents.agent_toolkits import FileManagementToolkit
 from langchain.agents.tools import InvalidTool
 from langchain.chains.summarize import load_summarize_chain
 
-from GraphStoreMemory import GraphStoreMemory
+from LongTermMemoryStore import LongTermMemoryStore
 
 from langchain import PromptTemplate, LLMChain
 from langchain.agents import StructuredChatAgent, AgentExecutor
@@ -244,7 +244,7 @@ class DialogueAgentWithTools(DialogueAgent):
         chat = ChatOpenAI(
             model_name='gpt-3.5-turbo-16k'
         )
-        self.graph_store = GraphStoreMemory(model=chat, agent_name=name)
+        self.graph_store = LongTermMemoryStore(model=chat, agent_name=name)
         self.message_history = self.graph_store.conversation_logger.load_last_n_lines(100)
         ToolRegistry().set_tools(name, self.tools)
 
@@ -273,10 +273,13 @@ class DialogueAgentWithTools(DialogueAgent):
                                        "Do not use json to activate a tool until you are in tool mode"
 
             print(f"{self.name}: ")
+
+            recent_history, summary = self.summarize_history(self.message_history)
+
             message = self.model(
                 [
                     SystemMessage(role=self.name, content=self.system_message.content + conversation_mode_prompt),
-                    HumanMessage(content="\n".join(self.message_history + [self.prefix])),
+                    HumanMessage(content="\n".join([summary] + recent_history + [self.prefix])),
                 ]
             )
 
@@ -293,16 +296,7 @@ class DialogueAgentWithTools(DialogueAgent):
                 name=self.name
             )
 
-            # summarize conversation to this point
-            summary_chain = load_summarize_chain(ChatOpenAI(temperature=0,
-                                                            model_name="gpt-3.5-turbo-16k"),
-                                                 chain_type="stuff")
-
-            # turn the conversation history into a list of documents
-            docs = [Document(page_content=msg, metadata={"source": "local"}) for msg in self.message_history[-100:-1]]
-            summary = "This is a summary of the conversation so far: " + summary_chain.run(docs)
-            print(summary)
-            recent_history = ["These are the last few exchanges: "] + self.message_history[-30:-1]
+            recent_history, summary = self.summarize_history(self.message_history)
 
             response = agent_chain({"input": "\n".join([self.system_message.content] + [summary] + recent_history)})
 
@@ -356,6 +350,18 @@ class DialogueAgentWithTools(DialogueAgent):
         self.message_history.append(message_to_log)
 
         return message.content
+
+    def summarize_history(self, message_history, summary_start_index=-100, summary_end_index=-15):
+        # summarize conversation to this point
+        summary_chain = load_summarize_chain(ChatOpenAI(temperature=0,
+                                                        model_name="gpt-3.5-turbo-16k"),
+                                             chain_type="stuff")
+        # turn the conversation history into a list of documents
+        docs = [Document(page_content=msg, metadata={"source": "local"}) for msg in message_history[summary_start_index:summary_end_index]]
+        summary = "This is a summary of the conversation so far: " + summary_chain.run(docs)
+        print(summary)
+        recent_history = ["These are the last few exchanges: "] + message_history[summary_end_index:]
+        return recent_history, summary
 
 
 class UserAgent(DialogueAgent):
