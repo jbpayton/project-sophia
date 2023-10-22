@@ -262,7 +262,7 @@ class EmbeddingKnowledgeGraph:
         collected_triples = list(set(collected_triples))
         return collected_triples
 
-    def build_graph_from_subject_verb(self, subject_verb, similarity_threshold=0.6, max_results=10):
+    def build_graph_from_subject_verb(self, subject_verb, similarity_threshold=0.6, max_results=20):
         subject, verb = subject_verb
         subject_embedding = self.embedding_model.encode([subject])[0]
         verb_embedding = self.embedding_model.encode([verb])[0]
@@ -386,7 +386,7 @@ if __name__ == '__main__':
     start = time.time()
     subject_verb_tuple = ('Rachel', 'wears')
 
-    graph = kgraph.build_graph_from_subject_verb(subject_verb_tuple, similarity_threshold=0.8)
+    graph = kgraph.build_graph_from_subject_verb(subject_verb_tuple, similarity_threshold=0.7)
     print(time.time() - start)
     print(subject_verb_tuple)
     print(graph)
