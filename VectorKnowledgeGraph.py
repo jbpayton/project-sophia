@@ -1,7 +1,11 @@
 import json
 import time
+from functools import reduce
+
 import faiss
 import os
+
+from tinydb import TinyDB, Query
 
 from collections import deque, defaultdict
 
@@ -14,8 +18,8 @@ from sentence_transformers import SentenceTransformer
 from langchain.schema import SystemMessage, HumanMessage
 
 
-class EmbeddingKnowledgeGraph:
-    def __init__(self, chat_llm=None, embedding_model=None, embedding_dim=384):
+class VectorKnowledgeGraph:
+    def __init__(self, chat_llm=None, embedding_model=None, embedding_dim=384, path="VectorKnowledgeGraph"):
         if chat_llm is None:
             self.chat_llm = ChatOpenAI(
                 model_name='gpt-4',
@@ -35,7 +39,13 @@ class EmbeddingKnowledgeGraph:
         self.id_to_triple = {}
         self.faiss_index = faiss.IndexFlatL2(self.embedding_dim)
 
-    def save(self, path="EmbeddingKnowledgeGraph"):
+        if not self.load(path):
+            os.makedirs(path, exist_ok=True)  # Create directory if not exists
+
+        # Initialize TinyDB
+        self.metadata_db = TinyDB(f'{path}/db.json')
+
+    def save(self, path="VectorKnowledgeGraph"):
         try:
             os.makedirs(path, exist_ok=True)  # Create directory if not exists
 
@@ -53,8 +63,13 @@ class EmbeddingKnowledgeGraph:
         except Exception as e:
             print(f"Error saving data: {e}")
 
-    def load(self, path="EmbeddingKnowledgeGraph"):
+    def load(self, path="VectorKnowledgeGraph"):
         try:
+            # Reset the data
+            self.triples_list = []
+            self.id_to_triple = {}
+            self.faiss_index = faiss.IndexFlatL2(self.embedding_dim)
+
             # Load triples_list and id_to_triple from JSON
             with open(f'{path}/triples_list.json', 'r') as f:
                 self.triples_list = [tuple(triple) for triple in json.load(f)]
@@ -72,7 +87,7 @@ class EmbeddingKnowledgeGraph:
             self.faiss_index = faiss.IndexFlatL2(self.embedding_dim)
             return False  # Return False if loading failed
 
-    def process_text(self, input_text, batch_size=50):
+    def process_text(self, input_text, batch_size=50, metadata=None):
         # separate the text into sentences
         sentences = self.split_sentences(input_text)
 
@@ -80,22 +95,23 @@ class EmbeddingKnowledgeGraph:
         for i in range(0, len(sentences), batch_size):
             batch = sentences[i:i + batch_size]
             batch_text = '. '.join(batch)
-            self.process_text_into_triples_and_embeddings(batch_text)
+            self._process_text_into_triples_and_embeddings(batch_text, metadata=None)
 
-    def split_sentences(self, input_text):
+    @staticmethod
+    def split_sentences(input_text):
         sentences = input_text.split('.')
         return sentences
 
-    def process_text_into_triples_and_embeddings(self, input_text, subject_threshold=0.9, verb_threshold=0.9,
-                                                 object_threshold=0.9):
+    def _process_text_into_triples_and_embeddings(self, input_text, subject_threshold=0.9, verb_threshold=0.9,
+                                                  object_threshold=0.9, metadata=None):
         # time the processing
         start_time = time.time()
-        new_triples = self.extract_triples(input_text)
+        new_triples = self._extract_triples(input_text)
         end_time = time.time()
         print(f"Extracted {len(new_triples)} triples in {end_time - start_time} seconds")
 
         filtered_triples = []
-        new_embeddings = self.triples_to_embeddings(new_triples)
+        new_embeddings = self._triples_to_embeddings(new_triples)
 
         # Set up a FAISS index if it doesn't exist
         if not hasattr(self, 'faiss_index'):
@@ -127,20 +143,31 @@ class EmbeddingKnowledgeGraph:
 
         self.triples_list.extend(filtered_triples)
 
+        # Add metadata to the metadata database
+        if metadata is not None:
+            with self.metadata_db.write_cache(size=len(filtered_triples)) as cache:
+                for triple in filtered_triples:
+                    metadata_copy = metadata.copy()  # Create a copy of the metadata dictionary
+                    metadata_copy['triple_id'] = triple  # Update the triple_id in the copy
+                    cache.insert(metadata_copy)  # Insert the copy into the database
+
         end_time = time.time()
         print(f"Added {len(filtered_triples)} triples to the list in {end_time - start_time} seconds")
 
-    def extract_triples(self, input_text):
+    def _extract_triples(self, input_text):
         triples_list = []
         build_topic_graphs_prompt = f"""
-        You are tasked with extracting factual information from the text provided in the form of (subject, predicate, object) triples. 
-        Adhere to the following guidelines to ensure accuracy and granularity:
+        You are tasked with extracting factual information from the text provided in the form of (subject, predicate, 
+        object) triples. Adhere to the following guidelines to ensure accuracy and granularity:
         1. Extract fundamental relationships, ignoring conversational fillers, greetings, and sign-offs.
-        2. Decompose complex triples into simpler, more atomic triples. Each triple should represent a single, clear relationship or attribute.
+        2. Decompose complex triples into simpler, more atomic triples. Each triple should represent a single, clear 
+        relationship or attribute.
         3. Make the object of each triple as singular or atomic as possible.
-        4. Use a consistent verb form for predicates, preferably base form (e.g., "love" instead of "loves", "work" instead of "working").
+        4. Use a consistent verb form for predicates, preferably base form (e.g., "love" instead of "loves", "work" 
+        instead of "working").
         5. Capture specific relationships and attributes rather than generic conversational phrases.
-        6. Choose verbs that accurately convey the core meaning of the action or relationship. For instance, use 'cries' instead of 'sheds a tear'.
+        6. Choose verbs that accurately convey the core meaning of the action or relationship. For instance, use 'cries' 
+        instead of 'sheds a tear'.
         7. Do not smush multiple words into one. For example, "wants to learn about" should not be "wantsToLearnAbout".
         8. Make items in triples as compact as possible without losing meaning.
         9. Do all of the above from a summarization of the text, not from the text itself.
@@ -171,7 +198,7 @@ class EmbeddingKnowledgeGraph:
 
         return triples_list
 
-    def triples_to_embeddings(self, triples):
+    def _triples_to_embeddings(self, triples):
         subjects, verbs, objects = zip(*triples)  # Unzip the triples into separate lists
         all_texts = subjects + verbs + objects  # Concatenate all texts
         all_embeddings = self.embedding_model.encode(all_texts)  # Batch process all texts
@@ -182,7 +209,7 @@ class EmbeddingKnowledgeGraph:
         svo_embeddings = list(zip(subject_embeddings, verb_embeddings, object_embeddings))
         return svo_embeddings
 
-    def get_most_similar_point(self, target_point, target_point_embedding, similarity_threshold):
+    def _get_most_similar_point(self, target_point, target_point_embedding, similarity_threshold):
         # Reshape the target_point_embedding to match the expected input shape for faiss
         query_embeddings = target_point_embedding.reshape(1, -1)
 
@@ -192,7 +219,7 @@ class EmbeddingKnowledgeGraph:
         # Get the ID and distance of the most similar point
         most_similar_point_id = I[0][0]
 
-        #if point is not in the id to triple map (i.e., the same as target point), return None
+        # if point is not in the id to triple map (i.e., the same as target point), return None
         if most_similar_point_id not in self.id_to_triple:
             return None
 
@@ -207,12 +234,12 @@ class EmbeddingKnowledgeGraph:
             most_similar_triple = self.id_to_triple[most_similar_point_id]
             # Extract the subject or object of the triple (whichever is not the target_point)
             most_similar_point = most_similar_triple[0] if most_similar_triple[0] != target_point else \
-            most_similar_triple[2]
+                most_similar_triple[2]
             return most_similar_point
 
         return None  # Return None if no point meets the similarity_threshold
 
-    def build_graph_from_noun(self, query, similarity_threshold=0.5, depth=0):
+    def build_graph_from_noun(self, query, similarity_threshold=0.8, depth=0):
         svo_text = self.triples_list
         collected_triples = []
         visited = set()
@@ -251,7 +278,7 @@ class EmbeddingKnowledgeGraph:
 
             # Look for most similar point both as a subject and as an object
             for is_subject in [True, False]:
-                most_similar_point = self.get_most_similar_point(
+                most_similar_point = self._get_most_similar_point(
                     current_point,
                     current_point_embedding,
                     similarity_threshold
@@ -262,7 +289,7 @@ class EmbeddingKnowledgeGraph:
         collected_triples = list(set(collected_triples))
         return collected_triples
 
-    def build_graph_from_subject_verb(self, subject_verb, similarity_threshold=0.6, max_results=20):
+    def build_graph_from_subject_verb(self, subject_verb, similarity_threshold=0.8, max_results=20):
         subject, verb = subject_verb
         subject_embedding = self.embedding_model.encode([subject])[0]
         verb_embedding = self.embedding_model.encode([verb])[0]
@@ -289,14 +316,34 @@ class EmbeddingKnowledgeGraph:
 
         return similar_triples
 
+    def query_triples_from_metadata(self, metadata_criteria):
+        if not metadata_criteria:
+            raise ValueError("metadata_criteria cannot be empty")
+
+        Q = Query()
+
+        # Construct the search condition dynamically from the metadata_criteria
+        conditions = [getattr(Q, key) == value for key, value in metadata_criteria.items() if value is not None]
+
+        if not conditions:
+            raise ValueError("No valid conditions provided in metadata_criteria")
+
+        search_condition = reduce(lambda a, b: a & b, conditions)
+
+        matching_records = self.metadata_db.search(search_condition)
+        matching_triple_ids = [record['triple_id'] for record in matching_records]
+        matching_triples = [self.id_to_triple[triple_id] for triple_id in matching_triple_ids]
+
+        return matching_triples
+
 
 # run to test
 if __name__ == '__main__':
     load_secrets()
 
-    kgraph = EmbeddingKnowledgeGraph()
+    kgraph = VectorKnowledgeGraph()
 
-    #try to load the graph from file
+    # try to load the graph from file
     loaded = kgraph.load()
 
     if not loaded:
@@ -307,9 +354,9 @@ if __name__ == '__main__':
         half, black pony heel boots with a red cross, and a red ribbon on her right ankle. Physically, Rachel is said to 
         look around 12 years old, however, she gives off an aura of someone far older than what she looks. 
     
-        When she was young, her appearance was similar that of her current self. She wore a black dress with a red cross in 
-        the center and a large, black ribbon on the back, black ribbons in her hair, a white blouse, white bloomers, 
-        and black slippers. 
+        When she was young, her appearance was similar that of her current self. She wore a black dress with a red 
+        cross in the center and a large, black ribbon on the back, black ribbons in her hair, a white blouse, 
+        white bloomers, and black slippers. 
         
         In BlazBlue: Alter Memory during the hot spring scene in Episode 5, Rachel is seen wearing a dark blue one-piece 
         bathing suit with red lines on both sides. 
@@ -343,7 +390,7 @@ if __name__ == '__main__':
         Jūbei and, to an extent, his brother, """
 
         # load sample log to string
-        #with open('Sophia_logs/2023-09-09.txt', 'r') as file:
+        # with open('Sophia_logs/2023-09-09.txt', 'r') as file:
         #    text = file.read().replace('\n', '')
 
         print("Processing text...")
@@ -361,7 +408,7 @@ if __name__ == '__main__':
     print("Building graph...")
     start = time.time()
     query = "Rachel"
-    graph = kgraph.build_graph_from_noun(query, 0.7, 0)
+    graph = kgraph.build_graph_from_noun(query, 0.8, 0)
     print(time.time() - start)
     print("Query: " + query)
     print(graph)
@@ -369,7 +416,7 @@ if __name__ == '__main__':
     print("Building graph...")
     start = time.time()
     query = "Ragna"
-    graph = kgraph.build_graph_from_noun(query, 0.7, 0)
+    graph = kgraph.build_graph_from_noun(query, 0.8, 0)
     print(time.time() - start)
     print("Query: " + query)
     print(graph)
@@ -377,7 +424,7 @@ if __name__ == '__main__':
     print("Building graph...")
     start = time.time()
     query = "Rachel"
-    graph = kgraph.build_graph_from_noun(query, 0.7, 1)
+    graph = kgraph.build_graph_from_noun(query, 0.8, 1)
     print(time.time() - start)
     print("Query: " + query)
     print(graph)
@@ -386,7 +433,7 @@ if __name__ == '__main__':
     start = time.time()
     subject_verb_tuple = ('Rachel', 'wears')
 
-    graph = kgraph.build_graph_from_subject_verb(subject_verb_tuple, similarity_threshold=0.7)
+    graph = kgraph.build_graph_from_subject_verb(subject_verb_tuple, similarity_threshold=0.8)
     print(time.time() - start)
     print(subject_verb_tuple)
     print(graph)
