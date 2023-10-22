@@ -87,7 +87,7 @@ class VectorKnowledgeGraph:
             self.faiss_index = faiss.IndexFlatL2(self.embedding_dim)
             return False  # Return False if loading failed
 
-    def process_text(self, input_text, batch_size=50, metadata=None):
+    def process_text(self, input_text, metadata=None, batch_size=50):
         # separate the text into sentences
         sentences = self.split_sentences(input_text)
 
@@ -95,15 +95,15 @@ class VectorKnowledgeGraph:
         for i in range(0, len(sentences), batch_size):
             batch = sentences[i:i + batch_size]
             batch_text = '. '.join(batch)
-            self._process_text_into_triples_and_embeddings(batch_text, metadata=None)
+            self._process_text_into_triples_and_embeddings(batch_text, metadata)
 
     @staticmethod
     def split_sentences(input_text):
         sentences = input_text.split('.')
         return sentences
 
-    def _process_text_into_triples_and_embeddings(self, input_text, subject_threshold=0.9, verb_threshold=0.9,
-                                                  object_threshold=0.9, metadata=None):
+    def _process_text_into_triples_and_embeddings(self, input_text, metadata=None, subject_threshold=0.9, verb_threshold=0.9,
+                                                  object_threshold=0.9):
         # time the processing
         start_time = time.time()
         new_triples = self._extract_triples(input_text)
@@ -145,11 +145,13 @@ class VectorKnowledgeGraph:
 
         # Add metadata to the metadata database
         if metadata is not None:
-            with self.metadata_db.write_cache(size=len(filtered_triples)) as cache:
-                for triple in filtered_triples:
-                    metadata_copy = metadata.copy()  # Create a copy of the metadata dictionary
-                    metadata_copy['triple_id'] = triple  # Update the triple_id in the copy
-                    cache.insert(metadata_copy)  # Insert the copy into the database
+            metadata_entries = []  # Create a list to collect the metadata entries
+            for triple_id, triple in zip(ids, filtered_triples):
+                metadata_copy = metadata.copy()  # Create a copy of the metadata dictionary
+                metadata_copy['triple_id'] = int(triple_id)
+                metadata_entries.append(metadata_copy)  # Append the copy to the list
+
+            self.metadata_db.insert_multiple(metadata_entries)  # Insert all metadata entries at once
 
         end_time = time.time()
         print(f"Added {len(filtered_triples)} triples to the list in {end_time - start_time} seconds")
@@ -348,7 +350,7 @@ if __name__ == '__main__':
 
     if not loaded:
         # Example usage
-        text = """Rachel is a young vampire girl with pale skin, long blond hair tied into two pigtails with black 
+        text_1 = ("""Rachel is a young vampire girl with pale skin, long blond hair tied into two pigtails with black 
         ribbons, and red eyes. She wears Gothic Lolita fashion with a frilly black gown and jacket, red ribbon bow tie, 
         a red bat symbol design cross from the front to the back on her dress, another red cross on her shawl and bottom 
         half, black pony heel boots with a red cross, and a red ribbon on her right ankle. Physically, Rachel is said to 
@@ -362,9 +364,10 @@ if __name__ == '__main__':
         bathing suit with red lines on both sides. 
         
         Rachel bears an incredibly striking resemblance to Raquel Alucard, save that the two have a very different dress 
-        sense, have different eye colors, hair style and a difference in appearance of age. 
+        sense, have different eye colors, hair style and a difference in appearance of age. """,
+                "https://blazblue.fandom.com/wiki/Rachel_Alucard#Appearance")
     
-        Rachel is a stereotypical aristocratic heiress. She has an almost enchanting air of dignity and grace, 
+        text_2 = ("""Rachel is a stereotypical aristocratic heiress. She has an almost enchanting air of dignity and grace, 
         yet is sarcastic and condescending to those she considers lower than her, always expecting them to have the 
         highest standards of formality when conversing with her. Despite this, she does care deeply for her allies. Her 
         butler, Valkenhayn, is fervently devoted to Rachel, as he was a loyal friend and respected rival to her father, 
@@ -375,7 +378,9 @@ if __name__ == '__main__':
         potential as a warrior and as a person. In BlazBlue: Centralfiction, her feelings for Ragna become more evident 
         as revealed in her arcade mode. She becomes even more concerned when she finds out that Naoto’s existence is 
         affecting Ragna. This is most notably the only time she lost her composure. In the end of the game, Rachel sheds 
-        a tear over his large sword, despite forgetting Ragna. Ragna is sardonic, rude, and abrasive to anyone he comes 
+        a tear over his large sword, despite forgetting Ragna. ""","https://blazblue.fandom.com/wiki/Rachel_Alucard#Personality")
+        
+        text_3 = ("""Ragna is sardonic, rude, and abrasive to anyone he comes 
         across. He is also quick to anger, stubborn, and never misses a chance to use as much vulgar language as 
         possible. In this regard, Ragna is similar to the stereotypical anime delinquent. This is caused mainly by Yūki 
         Terumi practically destroying Ragna’s life, which has created a mass of hatred in him; stronger than that of any 
@@ -387,7 +392,7 @@ if __name__ == '__main__':
         Beneath his gruff exterior, however, Ragna does possess a softer, more compassionate side. He chooses to keep up his 
         public front because of the path he chose – that of revenge, as well as accepting the fact that he’s still someone 
         who’s committed crimes such as murder. He does genuinely care for certain people, such as Taokaka, Rachel, Noel, 
-        Jūbei and, to an extent, his brother, """
+        Jūbei and, to an extent, his brother, Jin""", "https://blazblue.fandom.com/wiki/Ragna_the_Bloodedge#Personality")
 
         # load sample log to string
         # with open('Sophia_logs/2023-09-09.txt', 'r') as file:
@@ -395,7 +400,9 @@ if __name__ == '__main__':
 
         print("Processing text...")
         start = time.time()
-        kgraph.process_text(text)
+        kgraph.process_text(text_1[0], {"reference": text_1[1]})
+        kgraph.process_text(text_2[0], {"reference": text_2[1]})
+        kgraph.process_text(text_3[0], {"reference": text_3[1]})
         print(time.time() - start)
 
         kgraph.save()
@@ -437,3 +444,10 @@ if __name__ == '__main__':
     print(time.time() - start)
     print(subject_verb_tuple)
     print(graph)
+
+    print("getting all items from Ragna Article")
+    start = time.time()
+    triples = kgraph.query_triples_from_metadata({"reference": "https://blazblue.fandom.com/wiki/Ragna_the_Bloodedge#Personality"})
+    print(time.time() - start)
+    print(triples)
+
