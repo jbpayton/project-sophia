@@ -3,11 +3,8 @@ import time
 import os
 from datetime import datetime, timedelta
 
-from langchain.schema import Document
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import Chroma
+from VectorKnowledgeGraph import VectorKnowledgeGraph
 
-from GraphStore import GraphStore
 from langchain.schema import SystemMessage, HumanMessage
 import threading
 

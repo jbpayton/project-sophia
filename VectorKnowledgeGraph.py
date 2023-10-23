@@ -17,6 +17,10 @@ from langchain.chat_models import ChatOpenAI
 from sentence_transformers import SentenceTransformer
 from langchain.schema import SystemMessage, HumanMessage
 
+# this is used in place of a an alternate map function, allowing for the specification of alternative map functions
+class IdentityMap:
+    def __getitem__(self, key):
+        return key
 
 class VectorKnowledgeGraph:
     def __init__(self, chat_llm=None, embedding_model=None, embedding_dim=384, path="VectorKnowledgeGraphData"):
@@ -196,6 +200,23 @@ class VectorKnowledgeGraph:
 
         return triples_list
 
+    def summarize_graph(self, triples_list):
+        input_text = str(triples_list)
+        summarize_triples_prompt = f"""
+        You are tasked with very briefly summarizing the triples provided in the text provided. 
+        Piece together the triples into a brief summary of the text while retaining as much information as possible.
+        Also, summarize / cite any source information or other metadata.
+        """
+
+        message = self.chat_llm(
+            [
+                SystemMessage(role="TripleSummarizer", content=summarize_triples_prompt),
+                HumanMessage(content=input_text),
+            ]
+        )
+
+        return message.content
+
     def _triples_to_embeddings(self, triples):
         subjects, verbs, objects = zip(*triples)  # Unzip the triples into separate lists
         all_texts = subjects + verbs + objects  # Concatenate all texts
@@ -207,108 +228,71 @@ class VectorKnowledgeGraph:
         svo_embeddings = list(zip(subject_embeddings, verb_embeddings, object_embeddings))
         return svo_embeddings
 
-    def _get_most_similar_point(self, target_point, target_point_embedding, similarity_threshold, index=None,
-                                id_to_triple=None):
-        if index is None:
-            return None
-
-        if id_to_triple is None:
-            return None
-
-        # Reshape the target_point_embedding to match the expected input shape for faiss
-        query_embeddings = target_point_embedding.reshape(1, -1)
-
-        # Query the FAISS index
-        D, I = index.search(query_embeddings, 1)
-
-        # Get the ID and distance of the most similar point
-        most_similar_point_id = I[0][0]
-
-        # if point is not in the id to triple map (i.e., the same as target point), return None
-        if most_similar_point_id not in id_to_triple:
-            return None
-
-        distance = D[0][0]
-
-        # Convert the distance to similarity
-        similarity_score = 1 - distance
-
-        # Check if the similarity_score meets the similarity_threshold
-        if similarity_score >= similarity_threshold:
-            # Retrieve the triple associated with the most_similar_point_id from the id_to_triple map
-            most_similar_triple = id_to_triple[most_similar_point_id]
-            # Extract the subject or object of the triple (whichever is not the target_point)
-            most_similar_point = most_similar_triple[0] if most_similar_triple[0] != target_point else \
-                most_similar_triple[2]
-            return most_similar_point
-
-        return None  # Return None if no point meets the similarity_threshold
-
-    def build_graph_from_noun(self, query, similarity_threshold=0.8, depth=0, metadata_query=None):
+    def build_graph_from_noun(self, query, similarity_threshold=0.8, depth=0, metadata_query=None,
+                              return_metadata=False):
         if metadata_query is None:
             index = self.faiss_index
-            triples_map = self.id_to_triple
+            id_mapping = IdentityMap()
             triples_list = self.triples_list
         else:
-            index, triples_map, triples_list = self._filter_index_by_metadata_query(metadata_query)
+            index, id_mapping, triples_list = self._filter_index_by_metadata_query(metadata_query)
 
-        svo_text = triples_list
+        # Initialize lists to collect results and a set to keep track of visited nodes
         collected_triples = []
+        collected_metadata = []
         visited = set()
-        svo_index = defaultdict(list)
-        for svo_txt in svo_text:
-            subject, _, object_ = svo_txt
-            svo_index[subject].append(svo_txt)
-            svo_index[object_].append(svo_txt)
 
-        # Obtain the embedding for the query
-        query_embedding = self.embedding_model.encode([query])[0]
+        def recursive_search(current_point, current_depth):
+            if current_depth > depth:
+                return
 
-        queue = deque(
-            [(query, True, 0), (query, False, 0)])  # Initialize queue with subject and object view of query at depth 0
-
-        while queue:
-            current_point, is_subject, current_depth = queue.popleft()
-            if current_depth > depth:  # Stop processing once depth exceeds the specified depth
-                continue
             visited.add(current_point)
+            current_point_embedding = self.embedding_model.encode([current_point])[0]
 
-            # If the current point is not the initial query, obtain its embedding
-            if current_point != query:
-                current_point_embedding = self.embedding_model.encode([current_point])[0]
-            else:
-                current_point_embedding = query_embedding
+            # Query the FAISS index
+            D, I = index.search(current_point_embedding.reshape(1, -1), len(triples_list) * 3)  # Adjusted the length
 
-            for svo_txt in svo_index[current_point]:
-                subject, verb, object_ = svo_txt
-                if (is_subject and subject == current_point) or (not is_subject and object_ == current_point):
-                    collected_triples.append(svo_txt)
-                    next_point = object_ if subject == current_point else subject
-                    next_is_subject = subject == current_point
-                    if next_point not in visited:
-                        queue.append((next_point, next_is_subject, current_depth + 1))  # Increment depth for each step
+            for i in range(0, len(I[0])):
+                idx = I[0][i]
+                mapped_idx = id_mapping[idx // 3]    # Adjusted the mapping
 
-            # Look for most similar point both as a subject and as an object
-            for is_subject in [True, False]:
-                most_similar_point = self._get_most_similar_point(
-                    current_point,
-                    current_point_embedding,
-                    similarity_threshold,
-                    index,
-                    triples_map
-                )
-                if most_similar_point:
-                    queue.append((most_similar_point, is_subject, current_depth + 1))  # Increment depth for each step
+                if mapped_idx in self.id_to_triple:
+                    triple = self.id_to_triple[mapped_idx]
+                    subject, _, object_ = triple
 
-        collected_triples = list(set(collected_triples))
-        return collected_triples
+                    # Compute similarities for the subject and object
+                    subject_similarity = 1 - D[0][i] if subject == current_point else None
+                    object_similarity = 1 - D[0][
+                        i + 2] if object_ == current_point else None  # Adjusted the index for object similarity
 
-    def build_graph_from_subject_verb(self, subject_verb, similarity_threshold=0.8, max_results=20, metadata_query=None):
+                    if (subject_similarity is not None and subject_similarity >= similarity_threshold) or \
+                            (object_similarity is not None and object_similarity >= similarity_threshold):
+                        collected_triples.append(triple)
+                        if return_metadata:
+                            Q = Query()
+                            metadata_record = self.metadata_db.search(Q.triple_id == mapped_idx)
+                            collected_metadata.append(metadata_record[0] if metadata_record else None)
+
+                        # Recurse on the other side of the triple if it hasn't been visited yet
+                        next_point = object_ if subject == current_point else subject
+                        if next_point not in visited:
+                            recursive_search(next_point, current_depth + 1)
+
+        # Kick off the recursive search from the query point
+        recursive_search(query, 0)
+
+        if return_metadata:
+            return list(zip(collected_triples, collected_metadata))
+        else:
+            return list(set(collected_triples))
+
+    def build_graph_from_subject_verb(self, subject_verb, similarity_threshold=0.8, max_results=20, metadata_query=None,
+                                      return_metadata=False):
         if metadata_query is None:
             index = self.faiss_index
-            triples_map = self.id_to_triple
+            id_mapping = IdentityMap()
         else:
-            index, triples_map, _ = self._filter_index_by_metadata_query(metadata_query)
+            index, id_mapping, _ = self._filter_index_by_metadata_query(metadata_query)
 
         subject, verb = subject_verb
         subject_embedding = self.embedding_model.encode([subject])[0]
@@ -326,18 +310,40 @@ class VectorKnowledgeGraph:
 
         # Collect triples that meet the similarity threshold for both subject and verb
         similar_triples = []
-        for i in range(len(I[0])):
-            idx = I[0][i]  # Index of the similar triple
-            subject_similarity = similarities[0][i]
-            verb_similarity = similarities[1][i]
-            if subject_similarity >= similarity_threshold and verb_similarity >= similarity_threshold:
-                if idx in triples_map:
-                    similar_triple = triples_map[idx]
-                    similar_triples.append(similar_triple)
-                else:
-                    print("Triple with ID {} not found in id_to_triple map".format(idx))
+        similar_triples_metadata = []  # List to store metadata of similar triples
 
-        return similar_triples
+        # make a list of all elements common between I[0] // 3 and I[1] // 3
+        S_indices = I[0] // 3
+        V_indices = I[1] // 3
+        common_elements = list(set(S_indices).intersection(V_indices))
+
+        for i in range(len(common_elements)):
+            idx = common_elements[i]  # Index of the similar triple
+            s_index = np.argwhere(S_indices == idx)[0][0]
+            v_index = np.argwhere(V_indices == idx)[0][0]
+
+            subject_similarity = similarities[0][s_index]
+            verb_similarity = similarities[1][v_index]
+            if subject_similarity >= similarity_threshold and verb_similarity >= similarity_threshold:
+                mapped_idx = id_mapping[idx]  # Map the index to the original index
+                if mapped_idx in self.id_to_triple:
+                    similar_triple = self.id_to_triple[mapped_idx]
+                    similar_triples.append(similar_triple)
+                    # Query metadata database for metadata of the similar triple
+                    Q = Query()
+                    metadata_record = self.metadata_db.search(Q.triple_id == mapped_idx)
+                    if metadata_record:
+                        similar_triples_metadata.append(
+                            metadata_record[0])  # Assuming each triple_id has one metadata record
+                    else:
+                        similar_triples_metadata.append(None)  # Append None if no metadata found
+                else:
+                    print("Triple with ID {} not found in id_to_triple map".format(mapped_idx))
+
+        if return_metadata:
+            return list(zip(similar_triples, similar_triples_metadata))  # Return both triples and metadata
+        else:
+            return similar_triples  # Return only triples
 
     def _get_vector_by_id(self, triple_id, index=None):
         if index is None:
@@ -356,15 +362,20 @@ class VectorKnowledgeGraph:
         temp_index = faiss.IndexFlatL2(d)
 
         # Collect the vectors corresponding to the matching triple IDs into a single numpy array
-        vectors = np.array([self._get_vector_by_id(triple_id) for triple_id in matching_triple_ids])
+        # Adjusting the loop to account for the three consecutive indices per triple
+        vectors = np.array([self._get_vector_by_id(triple_id * 3 + position)
+                            for triple_id in matching_triple_ids
+                            for position in range(3)])
 
         # Add the vectors to the temporary index in one batch
         temp_index.add(vectors)
 
         filtered_triples_list = [self.id_to_triple[triple_id] for triple_id in matching_triple_ids]
-        filtered_id_to_triples_map = {i: triple for i, triple in enumerate(filtered_triples_list)}
 
-        return temp_index, filtered_id_to_triples_map, filtered_triples_list
+        # Adjusting the id_mapping to account for the three consecutive indices per triple
+        id_mapping = {new_id: original_id for new_id, original_id in enumerate(matching_triple_ids)}
+
+        return temp_index, id_mapping, filtered_triples_list
 
     def query_triples_from_metadata(self, metadata_criteria):
         matching_triple_ids = self._query_triple_ids(metadata_criteria)
@@ -400,8 +411,8 @@ if __name__ == '__main__':
         text_1 = ("""Rachel is a young vampire girl with pale skin, long blond hair tied into two pigtails with black 
         ribbons, and red eyes. She wears Gothic Lolita fashion with a frilly black gown and jacket, red ribbon bow tie, 
         a red bat symbol design cross from the front to the back on her dress, another red cross on her shawl and bottom 
-        half, black pony heel boots with a red cross, and a red ribbon on her right ankle. Physically, Rachel is said to 
-        look around 12 years old, however, she gives off an aura of someone far older than what she looks. 
+        half, black pointy heel boots with a red cross, and a red ribbon on her right ankle. Physically, Rachel is said 
+        to look around 12 years old, however, she gives off an aura of someone far older than what she looks. 
     
         When she was young, her appearance was similar that of her current self. She wore a black dress with a red 
         cross in the center and a large, black ribbon on the back, black ribbons in her hair, a white blouse, 
@@ -462,7 +473,7 @@ if __name__ == '__main__':
     print("Building graph...")
     start = time.time()
     query = "Rachel"
-    graph = kgraph.build_graph_from_noun(query, 0.8, 0)
+    graph = kgraph.build_graph_from_noun(query, 0.7, 0)
     print(time.time() - start)
     print("Query: " + query)
     print(graph)
@@ -470,16 +481,18 @@ if __name__ == '__main__':
     print("Building graph...")
     start = time.time()
     query = "Ragna"
-    graph = kgraph.build_graph_from_noun(query, 0.8, 0)
+    graph = kgraph.build_graph_from_noun(query, 0.7, 0)
     print(time.time() - start)
     print("Query: " + query)
     print(graph)
+    print("Summarizing graph...")
+    print(kgraph.summarize_graph(graph))
 
     print("Building graph using filter...")
     start = time.time()
     query = "Ragna"
     metadata_filter = {"reference": "https://blazblue.fandom.com/wiki/Ragna_the_Bloodedge#Personality"}
-    graph = kgraph.build_graph_from_noun(query, 0.8, 0, metadata_query=metadata_filter)
+    graph = kgraph.build_graph_from_noun(query, 0.7, 0, metadata_query=metadata_filter, return_metadata=True)
     print(time.time() - start)
     print("Query: " + query)
     print(graph)
@@ -487,7 +500,7 @@ if __name__ == '__main__':
     print("Building graph...")
     start = time.time()
     query = "Rachel"
-    graph = kgraph.build_graph_from_noun(query, 0.8, 1)
+    graph = kgraph.build_graph_from_noun(query, 0.7, 1)
     print(time.time() - start)
     print("Query: " + query)
     print(graph)
@@ -496,10 +509,12 @@ if __name__ == '__main__':
     start = time.time()
     subject_verb_tuple = ('Rachel', 'wears')
 
-    graph = kgraph.build_graph_from_subject_verb(subject_verb_tuple, similarity_threshold=0.8)
+    graph = kgraph.build_graph_from_subject_verb(subject_verb_tuple, similarity_threshold=0.7, return_metadata=True)
     print(time.time() - start)
     print(subject_verb_tuple)
     print(graph)
+    print("Summary: ")
+    print(kgraph.summarize_graph(graph))
 
     print("getting all items from Ragna Article")
     start = time.time()
