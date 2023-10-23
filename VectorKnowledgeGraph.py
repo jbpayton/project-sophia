@@ -19,7 +19,7 @@ from langchain.schema import SystemMessage, HumanMessage
 
 
 class VectorKnowledgeGraph:
-    def __init__(self, chat_llm=None, embedding_model=None, embedding_dim=384, path="VectorKnowledgeGraph"):
+    def __init__(self, chat_llm=None, embedding_model=None, embedding_dim=384, path="VectorKnowledgeGraphData"):
         if chat_llm is None:
             self.chat_llm = ChatOpenAI(
                 model_name='gpt-4',
@@ -45,7 +45,7 @@ class VectorKnowledgeGraph:
         # Initialize TinyDB
         self.metadata_db = TinyDB(f'{path}/db.json')
 
-    def save(self, path="VectorKnowledgeGraph"):
+    def save(self, path="VectorKnowledgeGraphData"):
         try:
             os.makedirs(path, exist_ok=True)  # Create directory if not exists
 
@@ -63,7 +63,7 @@ class VectorKnowledgeGraph:
         except Exception as e:
             print(f"Error saving data: {e}")
 
-    def load(self, path="VectorKnowledgeGraph"):
+    def load(self, path="VectorKnowledgeGraphData"):
         try:
             # Reset the data
             self.triples_list = []
@@ -113,11 +113,6 @@ class VectorKnowledgeGraph:
         filtered_triples = []
         new_embeddings = self._triples_to_embeddings(new_triples)
 
-        # Set up a FAISS index if it doesn't exist
-        if not hasattr(self, 'faiss_index'):
-            d = new_embeddings[0][0].shape[0]  # dimension of embeddings
-            self.faiss_index = faiss.IndexFlatL2(d)  # use a flat L2 index for simplicity
-
         # Check each new triple for similarity to existing triples
         for new_emb, new_triple in zip(new_embeddings, new_triples):
             new_emb_flat = np.vstack(new_emb)  # Stack the embeddings into a 2D array
@@ -131,6 +126,7 @@ class VectorKnowledgeGraph:
                    zip(D, [subject_threshold, verb_threshold, object_threshold])):
                 filtered_triples.append(new_triple)
                 self.faiss_index.add(new_emb_flat)  # add the new embeddings to the FAISS index if they're unique
+                print("Added triple: ", new_triple)
 
         print(f"Filtered {len(filtered_triples)} unique triples.")
 
@@ -211,18 +207,25 @@ class VectorKnowledgeGraph:
         svo_embeddings = list(zip(subject_embeddings, verb_embeddings, object_embeddings))
         return svo_embeddings
 
-    def _get_most_similar_point(self, target_point, target_point_embedding, similarity_threshold):
+    def _get_most_similar_point(self, target_point, target_point_embedding, similarity_threshold, index=None,
+                                id_to_triple=None):
+        if index is None:
+            return None
+
+        if id_to_triple is None:
+            return None
+
         # Reshape the target_point_embedding to match the expected input shape for faiss
         query_embeddings = target_point_embedding.reshape(1, -1)
 
         # Query the FAISS index
-        D, I = self.faiss_index.search(query_embeddings, 1)
+        D, I = index.search(query_embeddings, 1)
 
         # Get the ID and distance of the most similar point
         most_similar_point_id = I[0][0]
 
         # if point is not in the id to triple map (i.e., the same as target point), return None
-        if most_similar_point_id not in self.id_to_triple:
+        if most_similar_point_id not in id_to_triple:
             return None
 
         distance = D[0][0]
@@ -233,7 +236,7 @@ class VectorKnowledgeGraph:
         # Check if the similarity_score meets the similarity_threshold
         if similarity_score >= similarity_threshold:
             # Retrieve the triple associated with the most_similar_point_id from the id_to_triple map
-            most_similar_triple = self.id_to_triple[most_similar_point_id]
+            most_similar_triple = id_to_triple[most_similar_point_id]
             # Extract the subject or object of the triple (whichever is not the target_point)
             most_similar_point = most_similar_triple[0] if most_similar_triple[0] != target_point else \
                 most_similar_triple[2]
@@ -241,8 +244,15 @@ class VectorKnowledgeGraph:
 
         return None  # Return None if no point meets the similarity_threshold
 
-    def build_graph_from_noun(self, query, similarity_threshold=0.8, depth=0):
-        svo_text = self.triples_list
+    def build_graph_from_noun(self, query, similarity_threshold=0.8, depth=0, metadata_query=None):
+        if metadata_query is None:
+            index = self.faiss_index
+            triples_map = self.id_to_triple
+            triples_list = self.triples_list
+        else:
+            index, triples_map, triples_list = self._filter_index_by_metadata_query(metadata_query)
+
+        svo_text = triples_list
         collected_triples = []
         visited = set()
         svo_index = defaultdict(list)
@@ -283,7 +293,9 @@ class VectorKnowledgeGraph:
                 most_similar_point = self._get_most_similar_point(
                     current_point,
                     current_point_embedding,
-                    similarity_threshold
+                    similarity_threshold,
+                    index,
+                    triples_map
                 )
                 if most_similar_point:
                     queue.append((most_similar_point, is_subject, current_depth + 1))  # Increment depth for each step
@@ -291,7 +303,13 @@ class VectorKnowledgeGraph:
         collected_triples = list(set(collected_triples))
         return collected_triples
 
-    def build_graph_from_subject_verb(self, subject_verb, similarity_threshold=0.8, max_results=20):
+    def build_graph_from_subject_verb(self, subject_verb, similarity_threshold=0.8, max_results=20, metadata_query=None):
+        if metadata_query is None:
+            index = self.faiss_index
+            triples_map = self.id_to_triple
+        else:
+            index, triples_map, _ = self._filter_index_by_metadata_query(metadata_query)
+
         subject, verb = subject_verb
         subject_embedding = self.embedding_model.encode([subject])[0]
         verb_embedding = self.embedding_model.encode([verb])[0]
@@ -301,7 +319,7 @@ class VectorKnowledgeGraph:
         faiss.normalize_L2(query_embeddings)
 
         # Query the FAISS index
-        D, I = self.faiss_index.search(query_embeddings, max_results)  # Search for the top 10 similar triples
+        D, I = index.search(query_embeddings, max_results)  # Search for the top 10 similar triples
 
         # Convert distances to similarities
         similarities = 1 - D
@@ -313,30 +331,59 @@ class VectorKnowledgeGraph:
             subject_similarity = similarities[0][i]
             verb_similarity = similarities[1][i]
             if subject_similarity >= similarity_threshold and verb_similarity >= similarity_threshold:
-                similar_triple = self.id_to_triple[idx]
-                similar_triples.append(similar_triple)
+                if idx in triples_map:
+                    similar_triple = triples_map[idx]
+                    similar_triples.append(similar_triple)
+                else:
+                    print("Triple with ID {} not found in id_to_triple map".format(idx))
 
         return similar_triples
 
+    def _get_vector_by_id(self, triple_id, index=None):
+        if index is None:
+            index = self.faiss_index
+        return index.reconstruct(triple_id)
+
+    def _filter_index_by_metadata_query(self, metadata_query, index=None):
+        if index is None:
+            index = self.faiss_index
+
+        # Get the IDs of the triples that match the metadata criteria
+        matching_triple_ids = self._query_triple_ids(metadata_query)
+
+        # Create a new temporary FAISS index
+        d = self.embedding_dim  # assuming self.embedding_dim is the dimension of your embeddings
+        temp_index = faiss.IndexFlatL2(d)
+
+        # Collect the vectors corresponding to the matching triple IDs into a single numpy array
+        vectors = np.array([self._get_vector_by_id(triple_id) for triple_id in matching_triple_ids])
+
+        # Add the vectors to the temporary index in one batch
+        temp_index.add(vectors)
+
+        filtered_triples_list = [self.id_to_triple[triple_id] for triple_id in matching_triple_ids]
+        filtered_id_to_triples_map = {i: triple for i, triple in enumerate(filtered_triples_list)}
+
+        return temp_index, filtered_id_to_triples_map, filtered_triples_list
+
     def query_triples_from_metadata(self, metadata_criteria):
-        if not metadata_criteria:
-            raise ValueError("metadata_criteria cannot be empty")
-
-        Q = Query()
-
-        # Construct the search condition dynamically from the metadata_criteria
-        conditions = [getattr(Q, key) == value for key, value in metadata_criteria.items() if value is not None]
-
-        if not conditions:
-            raise ValueError("No valid conditions provided in metadata_criteria")
-
-        search_condition = reduce(lambda a, b: a & b, conditions)
-
-        matching_records = self.metadata_db.search(search_condition)
-        matching_triple_ids = [record['triple_id'] for record in matching_records]
+        matching_triple_ids = self._query_triple_ids(metadata_criteria)
         matching_triples = [self.id_to_triple[triple_id] for triple_id in matching_triple_ids]
 
         return matching_triples
+
+    def _query_triple_ids(self, metadata_criteria):
+        if not metadata_criteria:
+            raise ValueError("metadata_criteria cannot be empty")
+        Q = Query()
+        # Construct the search condition dynamically from the metadata_criteria
+        conditions = [getattr(Q, key) == value for key, value in metadata_criteria.items() if value is not None]
+        if not conditions:
+            raise ValueError("No valid conditions provided in metadata_criteria")
+        search_condition = reduce(lambda a, b: a & b, conditions)
+        matching_records = self.metadata_db.search(search_condition)
+        matching_triple_ids = [record['triple_id'] for record in matching_records]
+        return matching_triple_ids
 
 
 # run to test
@@ -424,6 +471,15 @@ if __name__ == '__main__':
     start = time.time()
     query = "Ragna"
     graph = kgraph.build_graph_from_noun(query, 0.8, 0)
+    print(time.time() - start)
+    print("Query: " + query)
+    print(graph)
+
+    print("Building graph using filter...")
+    start = time.time()
+    query = "Ragna"
+    metadata_filter = {"reference": "https://blazblue.fandom.com/wiki/Ragna_the_Bloodedge#Personality"}
+    graph = kgraph.build_graph_from_noun(query, 0.8, 0, metadata_query=metadata_filter)
     print(time.time() - start)
     print("Query: " + query)
     print(graph)
