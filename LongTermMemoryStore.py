@@ -66,7 +66,7 @@ class LongTermMemoryStore:
         self.current_topic = "<nothing yet>"
         self.topics = []
         self.relevant_entities = ["<not yet set>"]
-        self.entities_db = GraphStore("entities")
+        self.knowledge_store = VectorKnowledgeGraph(path="GraphStoreMemory")
         self.model = model
         self.name = "GraphStoreMemory"
         self.conversation_logger = ConversationFileLogger(agent_name + "_logs")
@@ -89,7 +89,7 @@ class LongTermMemoryStore:
         try:
             # get the graph from the conversation
             self.update_graph_from_conversation(message_buffer)
-            network_string = self.get_network_for_relevant_entities(simplify=True)
+            network_string = self.get_network_for_relevant_entities()
             print("Network string: " + network_string)
         finally:
             # release the lock
@@ -97,89 +97,17 @@ class LongTermMemoryStore:
             print("\nFinished processing a batch of messages")
 
     def update_graph_from_conversation(self, conversation_buffer):
-        build_topic_graphs_prompt = f"""You are an AI who reads conversations and builds knowledge graphs based on the 
-        entities discussed and the relationships between them. These knowledge graphs are constructed from RDF 
-        triples of the form (subject, predicate, object), e.g., (I, like, apples) or (Bob, is a father to, Ann). 
+        # create a string from the conversation buffer using join
+        conversation_string = "\n".join(conversation_buffer)
 
-        To ensure the consistency and reusability of the knowledge graphs, consider the following guidelines while 
-        identifying the RDF triples: 
+        # Prepare metadata for the graph
+        # Get the current timestamp
+        timestamp = datetime.now().isoformat()
+        metadata = {'timestamp': timestamp, "reference": "conversation"}
 
-        1. **Verb Form**: Use consistent verb forms (preferably base form) for predicates, e.g., "support", "love", 
-        "dislike". 2. **Specific Relationships**: Identify specific, directional verbs that clearly indicate the 
-        nature of the relationship between the subject and the object, e.g., "is a parent of", "works at". 3. 
-        **Controlled Vocabulary**: Stick to a predefined list of predicates to describe relationships, 
-        and map similar predicates to a standard term to maintain consistency. 4. **Hierarchical Relationships**: 
-        Where possible, create hierarchical relationships between predicates to group similar relationships together. 
-        5. **NLP Techniques**: Utilize techniques such as lemmatization to reduce predicates to their base form, 
-        and employ NLP techniques to extract entities and relationships more accurately from the conversation. 
-
-        Your task is to identify a list of topics (high-level conversation topics), the current topic, and the RDF 
-        triples from this conversation. Also, avoid adding duplicate entries and focus on describing entities through 
-        relationships rather than capturing actions. 
-
-        Additionally, identify the current topic and the 5 most relevant entities to the conversation. The previously 
-        determined current topic was "{self.current_topic}" and the relevant entities were "{', '.join(self.relevant_entities)}". 
-
-        Please proceed with generating the knowledge graph based on the conversation provided.
-        """
-
-        request_prompt = "\nPlease get a list of topics (high level conversation topics), the current topic, and the " \
-                         "RDF triples (subject, predicate, object) from this conversation. " \
-                         "Also, take care to not add duplicate entries. Also get the current topic and 5 most " \
-                         "relevant entities to the conversation."
-
-        message = self.model(
-            [
-                SystemMessage(role=self.name, content=build_topic_graphs_prompt),
-                HumanMessage(content=request_prompt + ":\n".join(conversation_buffer)),
-            ]
-        )
-        print("Got message: " + message.content)
-        message = self.model(
-            [
-                SystemMessage(role=self.name, content=build_topic_graphs_prompt),
-                HumanMessage(content="\nPlease format this in in JSON, in this format:"
-                                     "{"
-                                     " \"topics\": [\r\n"
-                                     "    \"topic 1\",\r\n"
-                                     "    \"topic 2\",\r\n"
-                                     " ],\r\n"
-                                     " \"current_topic\": \"topic\",\r\n"
-                                     " \"entities\": [\r\n"
-                                     "    \"entity 1\",\r\n"
-                                     "    \"entity 2\",\r\n"
-                                     " ],\r\n"
-                                     "  \"triples\": [\r\n"
-                                     "    {\r\n"
-                                     "      \"subject\": \"entity 1\",\r\n"
-                                     "      \"predicate\": \"predicate\",\r\n"
-                                     "      \"object\": \"entity 2\"\r\n"
-                                     "    },..."
-                                     " ],\r\n"
-                                     " \nTriples should link attributes and relationships to the subject, "
-                                     "rather than simply stating what is said:\n" + message.content),
-            ]
-        )
-
-        print("Got message: " + message.content)
-
-        # Parse the message.content and add to the graph
-        data = json.loads(message.content)
-        for triple in data['triples']:
-            try:
-                subject = triple['subject']
-                predicate = triple['predicate']
-                obj = triple['object']
-            except KeyError:
-                print("Error: Triple missing subject, predicate, or object")
-                continue
-            self.entities_db.add_edge(subject, predicate, obj)
-
-        self.topics = data['topics']
-        self.current_topic = data['current_topic']
-        self.relevant_entities = data['entities']
-
-        self.entities_db.save_to_file()
+        # update the graph from the conversation string
+        self.knowledge_store.process_text(conversation_string, metadata=metadata)
+        self.knowledge_store.save()
 
     def get_current_topic(self):
         return self.current_topic
@@ -190,71 +118,11 @@ class LongTermMemoryStore:
     def get_relevant_entities(self):
         return self.relevant_entities
 
-    def simplify_graph(self):
-
-        network_string = self.get_network_for_relevant_entities()
-        build_topic_graphs_prompt = 'You are a tool designed to prune and simplify conversational knowledge graphs. ' \
-                                    'Your goal is to meticulously remove duplicate entities and predicates that ' \
-                                    'don\'t contribute to the understanding of a conversation, while preserving ' \
-                                    'valuable data. If predicates are synonymous, consolidate them. Remove ' \
-                                    'inconsistent links, but take care with redundant ones as they can serve as ' \
-                                    'backups. It\'s crucial, however, to respect the individuality of distinct ' \
-                                    'entities involved in the conversation, like "Sophia" and "Joey". They should ' \
-                                    'remain separate to maintain the integrity of the conversation. Please ensure ' \
-                                    'that you don\'t destroy too many precious memories of the agent as they are ' \
-                                    'needed for optimal function. Once you have made your pruning decisions, ' \
-                                    'present them for validation before final application to prevent any unintended ' \
-                                    'alterations. '
-        message = self.model(
-            [
-                SystemMessage(role=self.name, content=build_topic_graphs_prompt),
-                HumanMessage(
-                    content="\nPlease format this in JSON, in this format (this is just an example). You can add more "
-                            "items to each list as needed: "
-                            "{"
-                            " \"entities_to_remove\": [\r\n"
-                            "    \"entity 1\",\r\n"
-                            "    \"entity 2\"\r\n"
-                            " ],\r\n"
-                            " \"predicates_to_remove\": [\r\n"
-                            "    \"entity 1\",\r\n"
-                            "    \"entity 2\"\r\n"
-                            " ],\r\n"
-                            "  \"entities_to_merge\": [\r\n"
-                            "    {\r\n"
-                            "      \"id_to_keep\": \"entity 3\",\r\n"
-                            "      \"id_to_merge\": \"entity 4\"\r\n"
-                            "    }\r\n"
-                            " ],\r\n"
-                            "  \"predicates_to_merge\": [\r\n"
-                            "    {\r\n"
-                            "      \"id_to_keep\": \"predicate_1\",\r\n"
-                            "      \"id_to_merge\": \"predicate_2\"\r\n"
-                            "    }\r\n"
-                            " ],\r\n"
-                            "  \"links_to_remove\": [\r\n"
-                            "    {\r\n"
-                            "      \"id_1\": \"entity 6\",\r\n"
-                            "      \"predicate\": \"predicate 56\",\r\n"
-                            "      \"id_2\": \"entity 7\"\r\n"
-                            "    }\r\n"
-                            " ]\r\n"
-                            "}\n\nThe network is as follows:\n" + network_string),
-
-            ]
-        )
-        print(message.content)
-        self.entities_db.process_instructions(message.content)
-
     def get_network_for_relevant_entities(self, simplify=False):
         entity_network_str = ""
 
         for entity in self.relevant_entities:
-            entity_str = self.entities_db.get_network_string(entity)
+            entity_str = self, self.knowledge_store.build_graph_from_noun(entity)
             entity_network_str += entity_str + "\n"  # Add an empty line between entities for clarity
-
-        if simplify:
-            self.simplify_graph()
-            entity_network_str = self.get_network_for_relevant_entities()
 
         return entity_network_str

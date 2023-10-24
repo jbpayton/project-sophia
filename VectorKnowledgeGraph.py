@@ -1,13 +1,10 @@
 import json
 import time
 from functools import reduce
-
 import faiss
 import os
 
 from tinydb import TinyDB, Query
-
-from collections import deque, defaultdict
 
 import numpy as np
 
@@ -17,7 +14,7 @@ from langchain.chat_models import ChatOpenAI
 from sentence_transformers import SentenceTransformer
 from langchain.schema import SystemMessage, HumanMessage
 
-# this is used in place of a an alternate map function, allowing for the specification of alternative map functions
+# this is used in place of an alternate map function, allowing for the specification of alternative map functions
 class IdentityMap:
     def __getitem__(self, key):
         return key
@@ -26,7 +23,7 @@ class VectorKnowledgeGraph:
     def __init__(self, chat_llm=None, embedding_model=None, embedding_dim=384, path="VectorKnowledgeGraphData"):
         if chat_llm is None:
             self.chat_llm = ChatOpenAI(
-                model_name='gpt-4',
+                model_name='gpt-3.5-turbo',
                 temperature=0.0
             )
         else:
@@ -43,14 +40,18 @@ class VectorKnowledgeGraph:
         self.id_to_triple = {}
         self.faiss_index = faiss.IndexFlatL2(self.embedding_dim)
 
+        self.save_path = path
         if not self.load(path):
             os.makedirs(path, exist_ok=True)  # Create directory if not exists
 
         # Initialize TinyDB
         self.metadata_db = TinyDB(f'{path}/db.json')
 
-    def save(self, path="VectorKnowledgeGraphData"):
+    def save(self, path=""):
         try:
+            if path == "":
+                path = self.save_path
+
             os.makedirs(path, exist_ok=True)  # Create directory if not exists
 
             # Convert triples from lists to tuples, if necessary
