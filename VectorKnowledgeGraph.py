@@ -396,6 +396,13 @@ class VectorKnowledgeGraph:
         matching_triple_ids = [record['triple_id'] for record in matching_records]
         return matching_triple_ids
 
+    def get_summary_from_noun(self, noun, similarity_threshold=0.5):
+        # Convenience method to get a summary from a single noun
+        triples = self.build_graph_from_noun(noun, similarity_threshold=similarity_threshold)
+        if len(triples) == 0:
+            return ""
+        else:
+            return self.summarize_graph(triples)
 
 # run to test
 if __name__ == '__main__':

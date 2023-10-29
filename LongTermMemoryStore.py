@@ -174,9 +174,10 @@ class LongTermMemoryStore:
         recent_history = ["These are the last few exchanges: "] + self.message_buffer[summary_end_index:]
         return recent_history, summary
 
+
 if __name__ == "__main__":
     load_secrets()
     test_ltm = LongTermMemoryStore(model=None, agent_name="Sophia", lines_to_load=100)
     print("done")
-    test_triples = test_ltm.knowledge_store.build_graph_from_noun("Heather")
+    test_triples = test_ltm.knowledge_store.build_graph_from_noun("Quantum", similarity_threshold=0.5)
     test_triples_2 = test_ltm.knowledge_store.build_graph_from_noun("Heather")
