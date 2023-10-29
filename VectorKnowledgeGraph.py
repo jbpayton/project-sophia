@@ -23,12 +23,10 @@ class VectorKnowledgeGraph:
     def __init__(self, chat_llm=None, embedding_model=None, embedding_dim=384, path="VectorKnowledgeGraphData"):
         if chat_llm is None:
             # this may have been loaded earlier / somewhere else, but we need to make sure it's loaded before we use it
-            load_secrets()
+
             self.chat_llm = ChatOpenAI(
-                model_name='gpt-4',
-                temperature=0.0,
-                openai_api_base=os.environ['LOCAL_TEXTGEN_API_BASE'],
-                openai_api_key="sk-111111111111111111111111111111111111111111111111"
+                model_name='gpt-3.5-turbo',
+                temperature=0.0
             )
         else:
             self.chat_llm = chat_llm
@@ -404,8 +402,15 @@ class VectorKnowledgeGraph:
 
 # run to test
 if __name__ == '__main__':
+    load_secrets()
+    model = ChatOpenAI(
+        model_name='gpt-4',
+        temperature=0.0,
+        openai_api_base=os.environ['LOCAL_TEXTGEN_API_BASE'],
+        openai_api_key="sk-111111111111111111111111111111111111111111111111"
+    )
     # Create a vector knowledge graph
-    kgraph = VectorKnowledgeGraph()
+    kgraph = VectorKnowledgeGraph(chat_llm=model)
 
     # try to load the graph from file
     loaded = kgraph.load()

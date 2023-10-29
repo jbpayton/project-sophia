@@ -12,10 +12,6 @@ class DialogueSimulator:
         self._step = 0
         self.select_next_speaker = selection_function
 
-    def reset(self):
-        for agent in self.agents:
-            agent.reset()
-
     def inject(self, name: str, message: str):
         for agent in self.agents:
             agent.receive(name, message)

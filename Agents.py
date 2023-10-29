@@ -5,19 +5,16 @@ from typing import List, Dict, Optional, Any, Tuple, Union
 from langchain.agents.agent import ExceptionTool
 from langchain.agents.agent_toolkits import FileManagementToolkit
 from langchain.agents.tools import InvalidTool
-from langchain.chains.summarize import load_summarize_chain
 
 from LongTermMemoryStore import LongTermMemoryStore
 
-from langchain import PromptTemplate, LLMChain
 from langchain.agents import StructuredChatAgent, AgentExecutor
 from langchain.callbacks import StreamingStdOutCallbackHandler
 from langchain.callbacks.manager import CallbackManagerForChainRun
 from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
-from langchain.schema import SystemMessage, HumanMessage, AIMessage, AgentAction, AgentFinish, OutputParserException, \
-    Document
-from langchain.tools import Tool, DuckDuckGoSearchRun, BaseTool
+from langchain.schema import SystemMessage, HumanMessage, AIMessage, AgentAction, AgentFinish, OutputParserException
+from langchain.tools import DuckDuckGoSearchRun, BaseTool
 from langchain.utils import get_color_mapping
 
 from tools import paged_web_browser
@@ -38,10 +35,7 @@ class DialogueAgent:
         self.model = model
         self.TTSEngine = TTSEngine
         self.prefix = f"{self.name}: "
-        self.reset()
-
-    def reset(self):
-        self.message_history = ["Here is the conversation so far."]
+        self.message_history = []
 
     def send(self) -> str:
         if self.model and self.system_message:
@@ -62,7 +56,6 @@ class DialogueAgent:
     def receive(self, name: str, message: str) -> None:
         # create a timestamped message
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-
         self.message_history.append(f"({timestamp}) {name}: {message}")
 
 
@@ -244,17 +237,12 @@ class DialogueAgentWithTools(DialogueAgent):
         chat = ChatOpenAI(
             model_name='gpt-3.5-turbo-16k'
         )
-        self.graph_store = LongTermMemoryStore(model=chat, agent_name=name)
-        self.message_history = self.graph_store.conversation_logger.load_last_n_lines(100)
+        self.ltm_store = LongTermMemoryStore(model=chat, agent_name=name)
+        self.message_history = self.ltm_store.conversation_logger.load_last_n_lines(100)
         ToolRegistry().set_tools(name, self.tools)
 
     def receive(self, name: str, message: str) -> None:
-        # create a timestamped message
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        message_to_log = f"({timestamp}) {name}: {message}"
-
-        self.graph_store.accept_message(message_to_log)
-        self.message_history.append(message_to_log)
+        self.ltm_store.accept_message(message, name=name)
 
     def send(self) -> str:
         """
@@ -274,7 +262,7 @@ class DialogueAgentWithTools(DialogueAgent):
 
             print(f"{self.name}: ")
 
-            recent_history, summary = self.summarize_history(self.message_history)
+            recent_history, summary = self.ltm_store.summarize_history()
 
             message = self.model(
                 [
@@ -296,28 +284,13 @@ class DialogueAgentWithTools(DialogueAgent):
                 name=self.name
             )
 
-            recent_history, summary = self.summarize_history(self.message_history)
+            recent_history, summary = self.ltm_store.summarize_history()
 
             response = agent_chain({"input": "\n".join([self.system_message.content] + recent_history)})
 
             message = AIMessage(content=response["output"])
 
-            # todo: clean up how this works to get the tool output into new memory store
-            # go through the intermediate steps and log them
-            for step in response["intermediate_steps"]:
-                step_input = step[0]
-                step_output = step[1]
-
-                if isinstance(step_input, AgentAction):
-                    # if output is longer than 256 characters, write it to a file
-                    if len(step_output) > 256:
-                        step_output = self.graph_store.conversation_logger.log_tool_output(step_input.tool, step_output)
-
-                    # create a timestamped message
-                    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-                    string_to_log = f"({timestamp}) System: Tool:{step_input.tool} Tool Input:{step_input.tool_input} Tool Output:{step_output} "
-                    self.graph_store.accept_message(string_to_log)
-                    self.message_history.append(string_to_log)
+            self.ltm_store.accept_tool_output(response)
 
         if "[" in message.content:
             bracket_contents = re.search(r'\[.*?\]', message.content).group(0)[1:-1]
@@ -343,26 +316,9 @@ class DialogueAgentWithTools(DialogueAgent):
             else:
                 self.TTSEngine.speak(spoken)
 
-        # create a timestamped message
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        message_to_log = f"({timestamp}) {self.name}: {message.content}"
-
-        self.graph_store.accept_message(message_to_log)
-        self.message_history.append(message_to_log)
+        self.ltm_store.accept_message(message, name=self.name)
 
         return message.content
-
-    def summarize_history(self, message_history, summary_start_index=-100, summary_end_index=-15):
-        # summarize conversation to this point
-        summary_chain = load_summarize_chain(ChatOpenAI(temperature=0,
-                                                        model_name="gpt-3.5-turbo-16k"),
-                                             chain_type="stuff")
-        # turn the conversation history into a list of documents
-        docs = [Document(page_content=msg, metadata={"source": "local"}) for msg in message_history[summary_start_index:summary_end_index]]
-        summary = "This is a summary of the conversation so far: " + summary_chain.run(docs)
-        print(summary)
-        recent_history = ["These are the last few exchanges: "] + message_history[summary_end_index:]
-        return recent_history, summary
 
 
 class UserAgent(DialogueAgent):

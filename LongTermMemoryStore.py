@@ -3,9 +3,12 @@ import time
 import os
 from datetime import datetime, timedelta
 
+from langchain.chains.summarize import load_summarize_chain
+from langchain.chat_models import ChatOpenAI
+
 from VectorKnowledgeGraph import VectorKnowledgeGraph
 
-from langchain.schema import SystemMessage, HumanMessage
+from langchain.schema import SystemMessage, HumanMessage, Document, AIMessage, AgentAction
 import threading
 
 
@@ -31,7 +34,7 @@ class ConversationFileLogger:
         # return the path to the file
         return file_path
 
-    def log_message(self, message_to_log):
+    def log_message(self, message_to_log, name=""):
         # Write the message to the log file
         date_str = time.strftime("%Y-%m-%d", time.localtime())
         with open(self.get_log_file_path(date_str), 'a', encoding="utf-8") as f:
@@ -58,52 +61,95 @@ class ConversationFileLogger:
 
 
 class LongTermMemoryStore:
-    def __init__(self, model, agent_name=""):
+    def __init__(self, model, agent_name="", lines_to_load=100):
         self.thread_lock = threading.Lock()
-        self.message_buffer = []
-        self.graph_processing_size = 10  # number of messages to process at a time
-        self.graph_processing_overlap = 5  # number of messages to overlap between processing
+        self.conversation_logger = ConversationFileLogger(agent_name + "_logs")
+        self.message_buffer = self.conversation_logger.load_last_n_lines(lines_to_load)
+        self.ltm_processing_size = 10  # number of messages to process at a time
+        self.ltm_overlap_size = 0  # number of messages to overlap between processing
+        self.unprocessed_message_count = 0  # number of messages that have not been processed
+        self.max_buffer_length = 100  # number of messages to overlap between processing
         self.current_topic = "<nothing yet>"
         self.topics = []
         self.relevant_entities = ["<not yet set>"]
         self.knowledge_store = VectorKnowledgeGraph(path="GraphStoreMemory")
         self.model = model
         self.name = "GraphStoreMemory"
-        self.conversation_logger = ConversationFileLogger(agent_name + "_logs")
 
-    def accept_message(self, message):
-        self.message_buffer.append(message)
-        self.conversation_logger.log_message(message)
-        if len(self.message_buffer) >= self.graph_processing_size:
-            # create a copy of the message buffer to process
-            message_buffer_copy = self.message_buffer.copy()
-            self.message_buffer = self.message_buffer[-self.graph_processing_overlap:]
+    def accept_message(self, message, name=""):
+        # create a timestamped message
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        # message has a field called "content" that contains the text of the message, then store it
+        if isinstance(message, AIMessage):
+            message_text = f"({timestamp}) {name}: {message.content}"
+        else:
+            message_text = f"({timestamp}) {name}: {message}"
+
+        # log the message
+        self.conversation_logger.log_message(message_text)
+
+        self.append_to_message_buffer(message_text)
+
+    def append_to_message_buffer(self, message_text, source="conversation"):
+        # add the message to the buffer
+        self.message_buffer.append(message_text)
+        self.unprocessed_message_count += 1
+        if self.unprocessed_message_count >= self.ltm_processing_size:
+            # create a copy of the last unprocessed messages
+            last_n_messages = self.message_buffer[-self.unprocessed_message_count:]
+
+            # might be unnecessary, but just in case make a copy of the buffer
+            message_buffer_copy = last_n_messages.copy()
+
+            # adjust the buffer length (keep this from growing forever)
+            self.message_buffer = self.message_buffer[-self.max_buffer_length:]
+
+            # we have processed all the messages in the buffer, ensure that we have overlap if desired
+            self.unprocessed_message_count = self.ltm_overlap_size
 
             # process the batch of messages in a separate thread (as a one shot daemon)
-            threading.Thread(target=self.process_buffer, args=(message_buffer_copy,), daemon=True).start()
+            threading.Thread(target=self.process_buffer, args=(message_buffer_copy, source), daemon=True).start()
 
-    def process_buffer(self, message_buffer):
+    def accept_tool_output(self, response):
+        for step in response["intermediate_steps"]:
+            step_input = step[0]
+            step_output = step[1]
+
+            if isinstance(step_input, AgentAction):
+                # create a timestamped message
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                tool_info = f"(Tool:{step_input.tool} Tool Input:{step_input.tool_input}"
+                string_to_log = f"({timestamp}) System: {tool_info} Tool Output:{step_output} "
+                threading.Thread(target=self.process_buffer, args=(string_to_log, tool_info), daemon=True).start()
+
+                # if output is longer than 256 characters, write it to a separate file
+                if len(step_output) > 256:
+                    step_output = self.conversation_logger.log_tool_output(step_input.tool, step_output)
+
+                # log the message
+                string_to_log = f"({timestamp}) System: {tool_info} Tool Output:{step_output} "
+                self.conversation_logger.log_message(string_to_log)
+
+    def process_buffer(self, message_buffer, reference="conversation"):
         # lock the thread
         self.thread_lock.acquire()
-        print("\nStarting to process a batch of messages")
+        print(f"\nStarting to process a batch of messages from {reference}")
         try:
             # get the graph from the conversation
-            self.update_graph_from_conversation(message_buffer)
-            network_string = self.get_network_for_relevant_entities()
-            print("Network string: " + network_string)
+            self.update_ltm(message_buffer, reference)
         finally:
             # release the lock
             self.thread_lock.release()
             print("\nFinished processing a batch of messages")
 
-    def update_graph_from_conversation(self, conversation_buffer):
+    def update_ltm(self, buffer, reference="conversation"):
         # create a string from the conversation buffer using join
-        conversation_string = "\n".join(conversation_buffer)
+        conversation_string = "\n".join(buffer)
 
         # Prepare metadata for the graph
         # Get the current timestamp
         timestamp = datetime.now().isoformat()
-        metadata = {'timestamp': timestamp, "reference": "conversation"}
+        metadata = {'timestamp': timestamp, "reference": reference}
 
         # update the graph from the conversation string
         self.knowledge_store.process_text(conversation_string, metadata=metadata)
@@ -112,17 +158,17 @@ class LongTermMemoryStore:
     def get_current_topic(self):
         return self.current_topic
 
-    def get_topics(self):
-        return self.topics
-
     def get_relevant_entities(self):
         return self.relevant_entities
 
-    def get_network_for_relevant_entities(self, simplify=False):
-        entity_network_str = ""
-
-        for entity in self.relevant_entities:
-            entity_str = self, self.knowledge_store.build_graph_from_noun(entity)
-            #entity_network_str += entity_str + "\n"  # Add an empty line between entities for clarity
-
-        return entity_network_str
+    def summarize_history(self, summary_start_index=-100, summary_end_index=-15):
+        # summarize conversation to this point
+        summary_chain = load_summarize_chain(ChatOpenAI(temperature=0,
+                                                        model_name="gpt-3.5-turbo-16k"),
+                                             chain_type="stuff")
+        # turn the conversation history into a list of documents
+        docs = [Document(page_content=msg, metadata={"source": "local"}) for msg in self.message_buffer[summary_start_index:summary_end_index]]
+        summary = "This is a summary of the conversation so far: " + summary_chain.run(docs)
+        print(summary)
+        recent_history = ["These are the last few exchanges: "] + self.message_buffer[summary_end_index:]
+        return recent_history, summary
