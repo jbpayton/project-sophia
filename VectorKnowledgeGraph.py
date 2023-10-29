@@ -263,13 +263,10 @@ class VectorKnowledgeGraph:
                     triple = self.id_to_triple[mapped_idx]
                     subject, _, object_ = triple
 
-                    # Compute similarities for the subject and object
-                    subject_similarity = 1 - D[0][i] if subject == current_point else None
-                    object_similarity = 1 - D[0][
-                        i + 2] if object_ == current_point else None  # Adjusted the index for object similarity
+                    # Similarities are already computed in the FAISS index, so we can use them directly
+                    similarity = 1 - D[0][i]
 
-                    if (subject_similarity is not None and subject_similarity >= similarity_threshold) or \
-                            (object_similarity is not None and object_similarity >= similarity_threshold):
+                    if similarity >= similarity_threshold:
                         collected_triples.append(triple)
                         if return_metadata:
                             Q = Query()

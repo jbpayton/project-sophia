@@ -11,6 +11,8 @@ from VectorKnowledgeGraph import VectorKnowledgeGraph
 from langchain.schema import SystemMessage, HumanMessage, Document, AIMessage, AgentAction
 import threading
 
+from util import load_secrets
+
 
 class ConversationFileLogger:
     def __init__(self, directory="logs"):
@@ -61,20 +63,19 @@ class ConversationFileLogger:
 
 
 class LongTermMemoryStore:
-    def __init__(self, model, agent_name="", lines_to_load=100):
+    def __init__(self, model, agent_name="", lines_to_load=50):
         self.thread_lock = threading.Lock()
         self.conversation_logger = ConversationFileLogger(agent_name + "_logs")
         self.message_buffer = self.conversation_logger.load_last_n_lines(lines_to_load)
         self.ltm_processing_size = 10  # number of messages to process at a time
         self.ltm_overlap_size = 0  # number of messages to overlap between processing
         self.unprocessed_message_count = 0  # number of messages that have not been processed
-        self.max_buffer_length = 100  # number of messages to overlap between processing
+        self.max_buffer_length = 50  # number of messages to overlap between processing
         self.current_topic = "<nothing yet>"
         self.topics = []
         self.relevant_entities = ["<not yet set>"]
-        self.knowledge_store = VectorKnowledgeGraph(path="GraphStoreMemory")
+        self.knowledge_store = VectorKnowledgeGraph(path=agent_name + "_GraphStoreMemory")
         self.model = model
-        self.name = "GraphStoreMemory"
 
     def accept_message(self, message, name=""):
         # create a timestamped message
@@ -172,3 +173,10 @@ class LongTermMemoryStore:
         print(summary)
         recent_history = ["These are the last few exchanges: "] + self.message_buffer[summary_end_index:]
         return recent_history, summary
+
+if __name__ == "__main__":
+    load_secrets()
+    test_ltm = LongTermMemoryStore(model=None, agent_name="Sophia", lines_to_load=100)
+    print("done")
+    test_triples = test_ltm.knowledge_store.build_graph_from_noun("Heather")
+    test_triples_2 = test_ltm.knowledge_store.build_graph_from_noun("Heather")
