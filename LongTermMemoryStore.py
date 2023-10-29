@@ -123,6 +123,6 @@ class LongTermMemoryStore:
 
         for entity in self.relevant_entities:
             entity_str = self, self.knowledge_store.build_graph_from_noun(entity)
-            entity_network_str += entity_str + "\n"  # Add an empty line between entities for clarity
+            #entity_network_str += entity_str + "\n"  # Add an empty line between entities for clarity
 
         return entity_network_str

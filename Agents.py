@@ -279,7 +279,7 @@ class DialogueAgentWithTools(DialogueAgent):
             message = self.model(
                 [
                     SystemMessage(role=self.name, content=self.system_message.content + conversation_mode_prompt),
-                    HumanMessage(content="\n".join([summary] + recent_history + [self.prefix])),
+                    HumanMessage(content="\n".join(recent_history + [self.prefix])),
                 ]
             )
 
@@ -298,10 +298,11 @@ class DialogueAgentWithTools(DialogueAgent):
 
             recent_history, summary = self.summarize_history(self.message_history)
 
-            response = agent_chain({"input": "\n".join([self.system_message.content] + [summary] + recent_history)})
+            response = agent_chain({"input": "\n".join([self.system_message.content] + recent_history)})
 
             message = AIMessage(content=response["output"])
 
+            # todo: clean up how this works to get the tool output into new memory store
             # go through the intermediate steps and log them
             for step in response["intermediate_steps"]:
                 step_input = step[0]
