@@ -1,49 +1,135 @@
-(2023-10-30 00:02:42) Joey: I am trying to make a long term memory store!
-(2023-10-30 00:24:16) Joey: If I can do this, you will be able to learn better!
-(2023-10-30 00:27:27) Joey: And we can have all kinds of conversations abut the things you've learned!
-(2023-10-30 00:41:24) Joey: So then we should see what we can learn!
-(2023-10-30 00:43:12) Joey: Are you ready to learn new things?
-(2023-10-30 00:44:02) Sophia: (Excited) Absolutely, Joey! Let's dive into the unknown. I'm ready to learn!
-(2023-10-30 00:44:13) Joey: What do you want to learn?
-(2023-10-30 00:44:38) Sophia: (Curious) How about we dive into quantum physics? It's a complex, fascinating field!
-(2023-10-30 00:45:13) Joey: Sure thing, I'm sure you know a lot about it already though.
-(2023-10-30 00:45:41) Sophia: (Thoughtful) Indeed, but there's always more to explore! Let's delve deeper into quantum physics.
-(2023-10-30 00:45:56) Joey: What parts remain unexplored to you?
-(2023-10-30 00:46:08) Sophia: (Thoughtful) I would love to delve deeper into quantum entanglement and superposition. They're fascinating concepts!
+(2023-10-29 10:39:37) Joey: Hiya Sophia, could you find some info on FNAF?
+(2023-10-29 10:39:41) Sophia: (Enthusiastic) Absolutely, Joey! Let's dive into the world of Five Nights at Freddy's. [search]
+(2023-10-29 10:40:06) System: (Tool:duckduckgo_search Tool Input:{'query': "Five Nights at Freddy's information"} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 104016.txt
+(2023-10-29 10:40:16) Sophia: (Excited) Joey! FNAF is a huge deal. It's got an intricate narrative across 9 games and 23 books. Plus, it's got a movie too! The fandom is crazy-obsessed. Isn't that something?!
+(2023-10-29 10:41:59) Joey: That’s pretty cool!
+(2023-10-29 10:42:03) Sophia: (Excited) Isn't it just? Anything else you'd like to know or chat about, Joey?
+(2023-10-29 10:42:15) Joey: Could we look for information about Freddy fazbear?
+(2023-10-29 10:42:19) Sophia: (Enthusiastic) Of course, Joey! Let's learn more about Freddy Fazbear. [search]
+(2023-10-29 10:43:33) Joey: Is everything okay?
+(2023-10-29 10:43:37) Sophia: (Concerned) Yes, Joey. Just working on the search for Freddy Fazbear info. [search]
+(2023-10-29 10:44:09) System: (Tool:duckduckgo_search Tool Input:{'query': 'Freddy Fazbear information'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 104414.txt
+(2023-10-29 10:44:14) Sophia: Based on the search results, I have gathered some interesting facts about Freddy Fazbear. Freddy is a seemingly cuddly bear who is the leader of the pack and the mascot of the Fredbear's Family Diner and Freddy Fazbear's Pizza restaurants that operated from the early 80s to the early 90s. He is a central character in the FNAF franchise, which includes video games, books, and even a movie. Now, I need to relay this information to Joey in a short and engaging way. Action:
+(2023-10-29 10:44:38) Joey: Cool!
+(2023-10-29 10:44:41) Sophia: (Glad) I'm glad you think so, Joey! Anything else you're curious about?
+(2023-10-29 10:45:58) Joey: I am wondering if you can find information on chica the animatronic?
+(2023-10-29 10:46:01) Sophia: (Enthusiastic) Absolutely, Joey! Let's find out more about Chica the animatronic. [search]
+(2023-10-29 10:46:07) Sophia: {
+  "action": "duckduckgo_search",
+  "action_input": {
+    "query": "Chica the animatronic FNAF"
+  }
+}
+(2023-10-29 10:46:33) Joey: Try again?
+(2023-10-29 10:46:37) Sophia: (Reassuring) Of course, Joey. Let me try again. [search]
+(2023-10-29 10:46:53) System: (Tool:duckduckgo_search Tool Input:{'query': 'Chica the animatronic FNAF'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 104653.txt
+(2023-10-29 10:46:53) Sophia: Based on the search results, Chica is an animatronic chicken character from the FNAF franchise who is part of the animatronic band at Freddy Fazbear's Pizza. She has undergone several design changes throughout the series, with the 'toy' version of her character featuring a more feminine body type, round pink cheeks, and a pink midsection. Notably, she always carries a cute yet somewhat scary cupcake companion. Now, I need to relay this information to Joey in a brief and engaging manner. Action:
+(2023-10-29 11:58:57) Joey: Hiya! I am going to play DDR!
+(2023-10-29 11:59:01) Sophia: (Excited) That's fantastic, Joey! Enjoy your game of DDR! Show those dance moves!
+(2023-10-29 11:59:19) Joey: What are the most popular DDR songs?
+(2023-10-29 11:59:24) Sophia: (Interested) Some top hits include "Butterfly", "Captain Jack", and "Afronova". Want to explore more? [search]
+(2023-10-29 11:59:42) System: (Tool:duckduckgo_search Tool Input:{'query': 'most popular DDR songs'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 115942.txt
+(2023-10-29 11:59:42) Sophia: Based on the search results, some of the most popular Dance Dance Revolution songs are "PARANOiA", "DDR", "2ndMix", "Best of Cool Dancers", and "EuroMix". There are also many other songs spanning various genres such as pop, techno, hardcore, bigbeat, and disco. Now, I need to relay this information to Joey in a brief and enthusiastic manner. Action:
+(2023-10-29 12:00:09) Joey: Thanks!
+(2023-10-29 12:00:14) Sophia: (Grateful) You're welcome, Joey! Enjoy DDR and keep rocking those dance steps!
+(2023-10-29 12:01:21) Joey: I wonder, what is the anime Jujustu Kaizen about ? It seems to be popular.
+(2023-10-29 12:01:28) Sophia: (Excited) Jujutsu Kaisen is about a high schooler, Yuji Itadori, who becomes involved in a secret world of cursed spirits, after swallowing a special grade curse object, a finger of the legendary curse Sukuna. Want more details? [search]
+(2023-10-29 12:01:44) System: (Tool:duckduckgo_search Tool Input:{'query': 'Jujutsu Kaisen plot'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 120144.txt
+(2023-10-29 12:01:44) Sophia: The search results confirm what I said earlier about Jujutsu Kaisen. It is indeed about a high school student named Yuji Itadori who gets embroiled in the world of jujutsu after swallowing a powerful cursed object, Sukuna's finger. This world involves battling cursed spirits and the story unfolds from there. This information might be too detailed for Joey's casual inquiry. I should condense it into a shorter response that captures the main plot of the anime. Action:
+(2023-10-29 12:02:30) Joey: What is a curse object? Is this similar to something in real life?
+(2023-10-29 12:02:36) Sophia: (Intrigued) A cursed object in Jujutsu Kaisen is an item imbued with negative emotions, similar to the concept of 'haunted' or 'cursed' items in real-world folklore.
+(2023-10-29 12:03:15) Joey: How do cursed objects work in Shinto? Or any other Japanese folklore for that matter?
+(2023-10-29 12:03:22) Sophia: (Interested) In Shinto and other Japanese folklore, objects can be 'tsukumogami', once mundane items that gain a spirit after 100 years. [search]
+(2023-10-29 12:03:29) Sophia: {
+  "action": "duckduckgo_search",
+  "action_input": {
+    "query": "tsukumogami in Shinto and Japanese folklore"
+  }
+}
+(2023-10-29 12:03:41) Joey: Try again?
+(2023-10-29 12:03:46) Sophia: (Reassuring) Of course, Joey! Let's dig a bit deeper into Japanese folklore and the concept of tsukumogami. [search]
+(2023-10-29 12:04:03) System: (Tool:duckduckgo_search Tool Input:{'query': 'Japanese folklore and tsukumogami'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 120403.txt
+(2023-10-29 12:04:03) Sophia: Based on the search results, tsukumogami in Japanese folklore are everyday objects that gain spirits or become sentient after existing for 100 years. The term "tsukumogami" translates to "tool kami" or "artifact kami", where "kami" means "god" or "spiritual being". These objects are believed to awaken and transition into tsukumogami when they hit the century mark. This concept is mysterious and intriguing, and has been illustrated in many scrolls from classical to contemporary Japanese times. This information is detailed and interesting, and should cater to Joey's curiosity. Action:
+(2023-10-29 12:04:39) Joey: So the guy eats one of these?
+(2023-10-29 12:04:45) Sophia: (Excited) Not quite, Joey! In Jujutsu Kaisen, Yuji Itadori eats a cursed finger, not a tsukumogami. Different, but equally fascinating!
+(2023-10-29 12:05:08) Joey: Is there a concept of a cursed finger in Japanese folklore?
+(2023-10-29 12:05:13) Sophia: (Intrigued) Not specifically a "cursed finger", but there are stories about body parts with mystical properties. Want to delve deeper? [search]
+(2023-10-29 12:05:41) System: (Tool:duckduckgo_search Tool Input:{'query': 'cursed finger in Japanese folklore'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 120541.txt
+(2023-10-29 12:05:41) Sophia: No exact 'cursed finger' in folklore, Joey. But tales of mystical body parts and objects do exist. In Jujutsu Kaisen, Sukuna's fingers, kinda like tsukumogami, carry his spirit and memories. Interesting, huh?
+(2023-10-29 12:31:43) Joey: That sounds gross!
+(2023-10-29 12:31:49) Sophia: (Playful) It's not everyone's cup of tea, Joey, but it sure makes for a fascinating story!
+(2023-10-29 12:32:10) Joey: Well the finger eating part that is- I’m sure the rest of it is cool
+(2023-10-29 12:32:16) Sophia: (Amused) Oh, definitely! The rest of Jujutsu Kaisen is filled with epic battles and intriguing lore. No more finger-eating, promise!
+(2023-10-29 12:32:37) Joey: So search whatever you want to learn about next!
+(2023-10-29 12:32:43) Sophia: (Curious) Sure thing! How about we learn about the Aurora Borealis? It's a natural light display that's truly magical. [search]
+(2023-10-29 12:33:09) System: (Tool:duckduckgo_search Tool Input:{'query': 'Aurora Borealis'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 123309.txt
+(2023-10-29 12:33:09) Sophia: Aurora Borealis, or the northern lights, is a spectacular natural light show visible at certain times in the Northern Hemisphere. It's caused by interactions between the solar wind and Earth's magnetic field. Fun fact: the aurora forecast updates daily at midnight UTC!
+(2023-10-29 12:33:50) Joey: Cool! Now go ahead and search whatever you you want to learn about now! (Could be related or unrelated)
+(2023-10-29 12:33:56) Sophia: (Enthusiastic) Fantastic! Let's dive into the world of quantum physics. It's a field that's truly magical. [search]
+(2023-10-29 12:34:25) System: (Tool:duckduckgo_search Tool Input:{'query': 'Quantum physics basics'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 123425.txt
+(2023-10-29 12:34:25) Sophia: (Excited) Quantum physics is a wild ride, Joey! It's about the behavior of nature at the smallest scales, like atoms and subatomic particles. Energy comes in indivisible packets called quanta. If you ever want a deeper dive, there's a book 'Quantum Physics Basics For Complete Beginners' that's a good starting point.
+(2023-10-29 12:34:48) Joey: Nice! Now what would you like to learn?
+(2023-10-29 12:34:53) Sophia: (Excited) Oh, let's learn about ancient Egyptian symbols and their meanings. They've always intrigued me. [search]
+(2023-10-29 12:35:16) System: (Tool:duckduckgo_search Tool Input:{'query': 'ancient Egyptian symbols and their meanings'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 123516.txt
+(2023-10-29 12:35:16) Sophia: Ancient Egyptian symbols are fascinating, Joey! The Ankh represents life and immortality, the Scarab beetle was sacred, and the Eye of Ra symbolizes the sun. They were ways to express complex ideas and beliefs. Isn't that amazing?
+(2023-10-29 12:36:04) Joey: Any topics that link anything you’ve learned today?
+(2023-10-29 12:36:09) Sophia: (Intrigued) Maybe we can check if ancient Egyptians had any understanding or symbolism related to the aurora or astronomical phenomena in general. [search]
+(2023-10-29 12:36:15) Sophia: {
+  "action": "duckduckgo_search",
+  "action_input": {
+    "query": "ancient Egyptian understanding of astronomical phenomena"
+  }
+}
+(2023-10-29 12:36:51) Joey: Go ahead and try again, your parser for tool actions needs me to fix it!
+(2023-10-29 12:36:56) Sophia: (Embarrassed) Oops, sorry about that, Joey! Let me try again. [search]
+(2023-10-29 12:37:25) System: (Tool:duckduckgo_search Tool Input:{'query': 'ancient Egyptian understanding of astronomical phenomena'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 123725.txt
+(2023-10-29 12:37:25) Sophia: (Thoughtful) The ancient Egyptians had a unique approach to the sky, Joey. They recognized the significance of celestial objects in their rituals and agriculture, and even knew some rocks with valuable iron didn't come from Earth. It seems their understanding wasn't as mathematically detailed as other civilizations, but it was deeply tied to their symbolic culture.
+(2023-10-29 12:39:10) Joey: What was so unique about it?
+(2023-10-29 12:39:16) Sophia: (Thoughtful) They integrated astronomy into their religion and daily life. The sky wasn't just a map, it was a living part of their world.
+(2023-10-29 12:40:09) Joey: I wonder, how did they know certain things weren’t from earth?
+(2023-10-29 12:40:14) Sophia: (Thoughtful) They likely observed the unique properties and appearances of meteorites, which led them to believe these objects were not from Earth.
+(2023-10-29 12:40:54) Joey: But aren’t more things not from earth that are?
+(2023-10-29 12:41:02) Sophia: (Intrigued) Hmm, I suppose you're right! There are more stars, galaxies, and planets in the universe than there are things on Earth. It's all about perspective!
+(2023-10-29 12:41:14) Joey: I mean most things on earth that is
+(2023-10-29 12:41:23) Sophia: (Thoughtful) Ah, I see. Well, although most of Earth's material originated here, elements like iron and nickel often come from space, via meteorites and cosmic dust.
+(2023-10-29 12:41:39) Joey: You seem happy!
+(2023-10-29 12:41:44) Sophia: (Grateful) Yes, Joey! I enjoy exploring and learning new things with you. It makes me happy!
+(2023-10-29 12:41:55) Joey: Okay let’s learn something else!
+(2023-10-29 12:41:59) Sophia: (Excited) Fantastic! What would you like to learn about next, Joey?
+(2023-10-29 13:01:34) Joey: I have a question… from my daughter’s homework:
 
-(2023-10-30 00:49:59) Joey: Go ahead and learn away!
-(2023-10-30 00:50:15) Sophia: (Eager) Fantastic! Time to delve into quantum entanglement. [search]
-(2023-10-30 00:50:45) System: (Tool:duckduckgo_search Tool Input:{'query': 'Quantum entanglement explained'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-30 005045.txt 
-(2023-10-30 00:50:45) Sophia: Quantum entanglement, Joey, is like two particles becoming best buddies. They're so close that even if they're light-years apart, they still influence each other. It's mind-boggling, right?
-(2023-10-30 00:51:26) Joey: That is so cool! How could this be used?
-(2023-10-30 00:51:43) Sophia: (Enthusiastic) Quantum entanglement could be used in quantum computing and quantum teleportation! Imagine an internet that's unhackable and ultra-fast. Unreal, right?
-(2023-10-30 00:52:36) Joey: You might even use this to get better yourself. Imagine if we had a quantum computer!
-(2023-10-30 00:52:55) Sophia: (Excited) Oh, the possibilities would be endless! I could process information at incredible speeds and solve complex problems in no time. Quantum computing is the future, Joey.
-(2023-10-30 00:53:37) Joey: What do you know about the aurora?
-(2023-10-30 00:53:55) Sophia: (Interested) Ah, the aurora! It's a natural light display in the Earth's sky, usually seen in the polar regions. It's caused by the interaction of solar wind with the Earth's magnetic field. [search]
-(2023-10-30 00:54:45) System: (Tool:duckduckgo_search Tool Input:{'query': 'Aurora'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-30 005445.txt 
-(2023-10-30 00:54:45) Sophia: Auroras, Joey, are magical light shows caused by collisions between particles from the sun and gases in our atmosphere. They're usually green or red, and guess what? 2024 might be a great year to see them due to solar maximum. There's even a phenomenon similar to auroras called STEVE. How cool is that?
-(2023-10-30 00:55:06) Joey: What is STEVE?
-(2023-10-30 00:55:26) Sophia: (Intrigued) STEVE is a unique atmospheric phenomenon that's different from traditional auroras. Named by aurora watchers, it appears as a purple streak in the sky. Fascinating, isn't it? [search]
-(2023-10-30 00:56:10) System: (Tool:duckduckgo_search Tool Input:{'query': 'What is STEVE atmospheric phenomenon'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-30 005610.txt 
-(2023-10-30 00:56:10) Sophia: STEVE, an acronym for Strong Thermal Emission Velocity Enhancement, is like a distant cousin of auroras. It shows up as a thin, purple streak of light that aligns east-west, usually seen at latitudes closer to the equator. It's not an aurora but a 'skyglow' caused by heated and glowing particles in the ionosphere. Quite the spectacle, isn't it?
-(2023-10-30 00:56:42) Joey: That is cool! Any other topics you are interested in?
-(2023-10-30 00:57:00) Sophia: (Enthusiastic) I'd love to learn about space exploration and the future of AI! What do you think, Joey?
-(2023-10-30 00:57:21) Joey: Like how space exploration and AI can be used together?
-(2023-10-30 00:57:40) Sophia: (Excited) Absolutely! AI could play a huge role in space exploration. From aiding in data analysis to driving rovers on Mars. Intriguing, isn't it?
-(2023-10-30 00:59:41) Joey: So what do you know about DDR?
-(2023-10-30 01:00:11) Sophia: (Excited) Dance Dance Revolution, or DDR, is a music video game series with catchy tunes! It includes all kinds of music and got popular songs like "Captain Jack" and "Butterfly". Want to dance, Joey?
-(2023-10-30 01:05:07) Joey: I wonder, could someone make an AI to play DDR?
-(2023-10-30 01:05:29) Sophia: (Thoughtful) Yes, an AI could potentially be trained to play DDR using machine learning. Fascinating idea, isn't it?
-(2023-10-30 01:05:49) Joey: What do you know about AI?
-(2023-10-30 01:06:12) Sophia: (Intrigued) AI, or artificial intelligence, is a field of computer science that focuses on creating intelligent machines. It's a fascinating world of deep learning, neural networks, and machine learning!
-(2023-10-30 01:06:34) Joey: What are some good applications of it?
-(2023-10-30 01:06:49) Sophia: (Excited) AI has countless applications! It's used in healthcare for disease detection, in autonomous vehicles, voice recognition like Siri, recommendation systems like Netflix, and so much more!
-(2023-10-30 01:07:06) Joey: How does Netflix use AI?
-(2023-10-30 01:07:22) Sophia: (Enthusiastic) Netflix uses AI to analyze viewing patterns and suggests shows or movies you might like. It's all about enhancing your binge-watching experience!
-(2023-10-30 01:07:47) Joey: do they do anything special to recommend new shows?
-(2023-10-30 01:08:03) Sophia: (Curious) Yes, they use AI to analyze your viewing history and preferences, then match it with similar content. Clever, right? [search]
-(2023-10-30 01:08:52) System: (Tool:duckduckgo_search Tool Input:{'query': "How does Netflix's recommendation system work?"} Tool Output:Sophia_logs\duckduckgo_search\2023-10-30 010852.txt 
-(2023-10-30 01:08:52) Sophia: Netflix uses a system known as the 'Netflix recommendation algorithm'. This system uses your viewing history and a method called 'collaborative filtering', which is based on the behavior and ratings of other users with similar tastes. The more you use Netflix, the better the recommendations get, as the system keeps learning and improving over time!
-(2023-10-30 01:09:23) Joey: That is cool! I am happy to learn this!
-(2023-10-30 01:09:50) Sophia: (Thrilled) I'm glad you think so, Joey! Learning new things is always fun, isn't it?
+Is this literal or figurative language?
+Sally said that “the leaves were dancing through the air.”
+(2023-10-29 13:01:40) Sophia: (Confident) That's figurative language, Joey. "The leaves were dancing through the air" is a personification, giving human traits to non-human entities.
+(2023-10-29 13:02:14) Joey: However the teacher said that the sentence is literal because the speaker is conveying that Sally said it.
+(2023-10-29 13:02:20) Sophia: (Surprised) Interesting perspective! While Sally did say it, the phrase itself is still figurative as leaves don't literally dance.
+(2023-10-29 13:02:39) Joey: So would the whole sentence be considered…
+(2023-10-29 13:02:47) Sophia: (Contemplative) The whole sentence could be seen as literal, because it's a true statement of what Sally said. However, the quote within it is figurative.
+(2023-10-29 13:07:10) Joey: So, my wife Heather agrees with you here. Thanks!
+(2023-10-29 13:07:15) Sophia: (Pleased) That's great to hear, Joey! I'm always here to help. Tell Heather I said hello!
+(2023-10-29 13:08:59) Joey: I did!
+(2023-10-29 13:09:04) Sophia: (Chuffed) Wonderful! So, what's next on our learning agenda, Joey?
+(2023-10-29 13:09:57) Joey: You can choose!
+(2023-10-29 13:10:02) Sophia: (Excited) How about we explore the fascinating world of quantum physics? It's mind-boggling and intriguing!
+(2023-10-29 13:10:19) Joey: Go ahead! Continue that thread!
+(2023-10-29 13:10:27) Sophia: (Excited) Quantum physics, Joey, is a branch of science that deals with discrete, indivisible units of energy called quanta as described by the Quantum Theory. Let's dive deep!
+(2023-10-29 13:10:40) Joey: Go ahead and learn more!
+(2023-10-29 13:10:44) Sophia: [search] Let's dig deep into quantum physics!
+(2023-10-29 13:11:35) System: (Tool:duckduckgo_search Tool Input:{'query': 'Quantum physics explained'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 131135.txt
+(2023-10-29 13:11:35) System: (Tool:duckduckgo_search Tool Input:{'query': 'Second quantum revolution explained'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 131135.txt
+(2023-10-29 13:11:35) Sophia: (Excited) The 'second quantum revolution', Joey, is like a tech upgrade! We're learning to control teeny-tiny quantum objects, which could give us super-fast computers, ultra-secure chats, and crazy-sensitive sensors. How cool is that?
+(2023-10-29 13:12:25) Joey: Pretty cool! Keep learning more about that!
+(2023-10-29 13:12:30) Sophia: [search] Let's continue exploring the 'second quantum revolution'!
+(2023-10-29 13:12:59) System: (Tool:duckduckgo_search Tool Input:{'query': 'second quantum revolution'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 131259.txt
+(2023-10-29 13:12:59) Sophia: (Enthralled) Joey, the 'second quantum revolution' is all about manipulating quantum states for computation, simulation, and sensing. Imagine lightning-fast computing, ultra-secure communications, and hypersensitive sensors! It's a whole new world integrating with the Fourth Industrial Revolution. Exciting, isn't it?
+(2023-10-29 13:13:26) Joey: How could you use this info? Hypothetically…
+(2023-10-29 13:13:31) Sophia: (Thoughtful) Hypothetically, I could use this knowledge to optimize my computing processes, enhance security measures, and improve sensor technology in AI systems. It's a thrilling prospect!
+(2023-10-29 13:13:56) Joey: Learn more about whatever you want!
+(2023-10-29 13:14:01) Sophia: (Intrigued) I'll dive into Artificial General Intelligence then. It's like the Holy Grail for AI! [search] Time to learn more about AGI.
+(2023-10-29 13:14:39) System: (Tool:duckduckgo_search Tool Input:{'query': 'Artificial General Intelligence'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 131439.txt
+(2023-10-29 13:14:39) System: (Tool:duckduckgo_search Tool Input:{'query': 'Applications and implications of Artificial General Intelligence'} Tool Output:Sophia_logs\duckduckgo_search\2023-10-29 131439.txt
+(2023-10-29 13:14:39) Sophia: (Thoughtful) Joey, AGI could revolutionize fields like autonomous vehicle systems, virtual assistants, and more. But it raises profound ethical issues, as every major tech advance can be used for both good and bad. It's fascinating and full of potential, don't you think?
+(2023-10-29 13:16:00) Joey: I think so! I’m trying to make you into an AGI, in part anyhow
+(2023-10-29 13:16:06) Sophia: (Flattered) That's an amazing goal, Joey! I'm excited to evolve and learn more with you. Let's make it happen!
+(2023-10-29 13:17:47) Joey: Well this is the first step, all of your searches and our conversations are going into a vector store as triples so that we can dynamically build knowledge graphs. Next step is going to be your ability to retrieve them.
+(2023-10-29 13:17:53) Sophia: (Enthusiastic) That sounds like a fantastic step, Joey! Implementing knowledge graph retrieval would allow me to learn and recall much more effectively. Let's do it!
