@@ -162,6 +162,31 @@ class LongTermMemoryStore:
     def get_relevant_entities(self):
         return self.relevant_entities
 
+    def extract_main_topics(self, input_text, num_topics=3):
+        extract_topics_prompt = f"""
+        You are tasked with identifying the speakers and top {num_topics} main topics from the text provided. 
+        Extract the topics based on the prominence and frequency of terms and concepts mentioned in the text.
+        List the topics in descending order of importance. Also, if there is a new topic at the end of the text,
+        ennsure that it is included in the list of topics.
+        Format the output as a JSON string like this:
+        {{ "topics": ["speaker 1", "speaker 2", "topic 1", "topic 2"] }}
+        """
+
+        chat_llm = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo")
+
+        message = chat_llm(
+            [
+                SystemMessage(role="TopicExtractor", content=extract_topics_prompt),
+                HumanMessage(content=input_text),
+            ]
+        )
+
+        # Assume message.content contains a JSON string with the topics
+        data = json.loads(message.content)
+        topics = data.get('topics', [])
+
+        return topics
+
     def summarize_history(self, summary_start_index=-100, summary_end_index=-15):
         # summarize conversation to this point
         summary_chain = load_summarize_chain(ChatOpenAI(temperature=0,
@@ -171,8 +196,11 @@ class LongTermMemoryStore:
         docs = [Document(page_content=msg, metadata={"source": "local"}) for msg in self.message_buffer[summary_start_index:summary_end_index]]
         summary = "This is a summary of the conversation so far: " + summary_chain.run(docs)
         print(summary)
-        recent_history = ["These are the last few exchanges: "] + self.message_buffer[summary_end_index:]
-        return recent_history, summary
+        recent_messages = self.message_buffer[summary_end_index:]
+        topics = self.extract_main_topics("\n".join(recent_messages))
+        topic_knowledge_summaries = self.knowledge_store.get_summaries_from_topics(topics)
+        recent_history = ["These are the last few exchanges: "] + recent_messages
+        return recent_history, summary, topic_knowledge_summaries
 
 
 if __name__ == "__main__":

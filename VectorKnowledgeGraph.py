@@ -396,13 +396,19 @@ class VectorKnowledgeGraph:
         matching_triple_ids = [record['triple_id'] for record in matching_records]
         return matching_triple_ids
 
-    def get_summary_from_noun(self, noun, similarity_threshold=0.5):
-        # Convenience method to get a summary from a single noun
-        triples = self.build_graph_from_noun(noun, similarity_threshold=similarity_threshold)
-        if len(triples) == 0:
+    def get_summaries_from_topics(self, topics, similarity_threshold=0.5):
+        summaries_with_headings = ["The following is what you know about the current topics:\n\n"]
+        for topic in topics:
+            triples = self.build_graph_from_noun(topic, similarity_threshold=similarity_threshold)
+            if len(triples) > 0:
+                summary = self.summarize_graph(triples)
+                summaries_with_headings.append(f"{topic}:\n{summary}\n")
+
+        if len(summaries_with_headings) == 0:
             return ""
         else:
-            return self.summarize_graph(triples)
+            return "\n".join(summaries_with_headings)
+
 
 # run to test
 if __name__ == '__main__':

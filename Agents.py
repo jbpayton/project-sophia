@@ -253,20 +253,23 @@ class DialogueAgentWithTools(DialogueAgent):
         print("Number of messages in history: ", len(self.message_history))
 
         if not self.needs_to_think_more:
-            conversation_mode_prompt = "You can choose to express your emotions by leading a sentence with " \
-                                       "parenthesis with your emotional state. If I feel the need to use a tool, " \
-                                       "I will append [search] or [recall] or [files] or [generate image] " \
-                                       "this will activate a mode where deeper thought or tools can be used. " \
+            conversation_mode_prompt = "Express your emotions by leading a sentence with " \
+                                       "parenthesis with your emotional state. " \
+                                       "If you feel the need to use a tool, " \
+                                       "finish a sentence with [search] or [recall] or [files] or [generate image] " \
+                                       "this will go right into a mode where deeper thought or tools can be used. " \
                                        "Prompting again will trigger the search, recall, or image generator. " \
-                                       "Do not use json to activate a tool until you are in tool mode"
+                                       "Do not use json to activate a tool until you are in tool mode."
 
             print(f"{self.name}: ")
 
-            recent_history, summary = self.ltm_store.summarize_history()
+            recent_history, summary, topic_knowledge = self.ltm_store.summarize_history()
+
+            print("System Prompt:" + self.system_message.content + conversation_mode_prompt + summary + topic_knowledge)
 
             message = self.model(
                 [
-                    SystemMessage(role=self.name, content=self.system_message.content + conversation_mode_prompt),
+                    SystemMessage(role=self.name, content=self.system_message.content + conversation_mode_prompt + summary + topic_knowledge),
                     HumanMessage(content="\n".join(recent_history + [self.prefix])),
                 ]
             )
@@ -284,9 +287,9 @@ class DialogueAgentWithTools(DialogueAgent):
                 name=self.name
             )
 
-            recent_history, summary = self.ltm_store.summarize_history()
+            recent_history, summary, topic_knowledge = self.ltm_store.summarize_history()
 
-            response = agent_chain({"input": "\n".join([self.system_message.content] + recent_history)})
+            response = agent_chain({"input": "\n".join([self.system_message.content] + [topic_knowledge] + recent_history)})
 
             message = AIMessage(content=response["output"])
 
