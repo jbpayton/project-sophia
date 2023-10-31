@@ -2,6 +2,7 @@ import time
 import re
 from typing import List, Dict, Optional, Any, Tuple, Union
 
+from langchain import WikipediaAPIWrapper
 from langchain.agents.agent import ExceptionTool
 from langchain.agents.agent_toolkits import FileManagementToolkit
 from langchain.agents.tools import InvalidTool
@@ -14,7 +15,7 @@ from langchain.callbacks.manager import CallbackManagerForChainRun
 from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import SystemMessage, HumanMessage, AIMessage, AgentAction, AgentFinish, OutputParserException
-from langchain.tools import DuckDuckGoSearchRun, BaseTool
+from langchain.tools import DuckDuckGoSearchRun, BaseTool, WikipediaQueryRun
 from langchain.utils import get_color_mapping
 
 from tools import paged_web_browser
@@ -360,7 +361,8 @@ def get_avatar_agent(profile=None, avatar_tts=None):
         selected_tools=["read_file", "write_file", "list_directory", "copy_file", "move_file", "file_delete"]
     ).get_tools()
 
-    tools = [DuckDuckGoSearchRun(),
+    tools = [WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper()),
+             DuckDuckGoSearchRun(),
              paged_web_browser,
              image_generator_tool] + file_tools
 

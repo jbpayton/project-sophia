@@ -14,6 +14,7 @@ numpy~=1.24.1
 duckduckgo-search
 chromadb
 tiktoken
+wikipedia
 sentence_transformers
 pyTelegramBotAPI
 cogdb
