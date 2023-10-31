@@ -398,11 +398,16 @@ class VectorKnowledgeGraph:
 
     def get_summaries_from_topics(self, topics, similarity_threshold=0.5):
         summaries_with_headings = ["The following is what you know about the current topics:\n\n"]
+        print(f"Getting summaries for topics: {topics}")
         for topic in topics:
+            print(f"Building graph summary for topic: {topic}")
             triples = self.build_graph_from_noun(topic, similarity_threshold=similarity_threshold)
             if len(triples) > 0:
+                print(f"Found {len(triples)} triples for topic: {topic}")
+                print(triples)
                 summary = self.summarize_graph(triples)
                 summaries_with_headings.append(f"{topic}:\n{summary}\n")
+                print(f"Summary for topic {topic}:\n{summary}")
 
         if len(summaries_with_headings) == 0:
             return ""

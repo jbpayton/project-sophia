@@ -49,7 +49,7 @@ class ConversationFileLogger:
             date_str = current_date.strftime("%Y-%m-%d")
             file_path = self.get_log_file_path(date_str)
             if os.path.exists(file_path):
-                with open(file_path, 'r') as f:
+                with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
                     lines = f.readlines()
                     if len(lines) <= n:
                         lines_to_return = lines + lines_to_return
