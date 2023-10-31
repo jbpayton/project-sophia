@@ -108,8 +108,12 @@ class LongTermMemoryStore:
             # we have processed all the messages in the buffer, ensure that we have overlap if desired
             self.unprocessed_message_count = self.ltm_overlap_size
 
+            # get the log reference to store with the triples
+            date_str = time.strftime("%Y-%m-%d", time.localtime())
+            log_reference = self.conversation_logger.get_log_file_path(date_str)
+
             # process the batch of messages in a separate thread (as a one shot daemon)
-            threading.Thread(target=self.process_buffer, args=(message_buffer_copy, source), daemon=True).start()
+            threading.Thread(target=self.process_buffer, args=(message_buffer_copy, source, log_reference), daemon=True).start()
 
     def accept_tool_output(self, response):
         for step in response["intermediate_steps"]:
@@ -121,36 +125,42 @@ class LongTermMemoryStore:
                 timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
                 tool_info = f"(Tool:{step_input.tool} Tool Input:{step_input.tool_input}"
                 string_to_log = f"({timestamp}) System: {tool_info} Tool Output:{step_output} "
-                threading.Thread(target=self.process_buffer, args=(string_to_log, tool_info), daemon=True).start()
+
 
                 # if output is longer than 256 characters, write it to a separate file
                 if len(step_output) > 256:
-                    step_output = self.conversation_logger.log_tool_output(step_input.tool, step_output)
+                    log_file_path = self.conversation_logger.log_tool_output(step_input.tool, string_to_log)
+                    log_reference = log_file_path
+                    step_output = log_file_path
+                else:
+                    date_str = time.strftime("%Y-%m-%d", time.localtime())
+                    log_reference = self.conversation_logger.get_log_file_path(date_str)
 
+                threading.Thread(target=self.process_buffer, args=(string_to_log, tool_info, log_reference), daemon=True).start()
                 # log the message
                 string_to_log = f"({timestamp}) System: {tool_info} Tool Output:{step_output} "
                 self.conversation_logger.log_message(string_to_log)
 
-    def process_buffer(self, message_buffer, reference="conversation"):
+    def process_buffer(self, message_buffer, reference="conversation", log_reference=""):
         # lock the thread
         self.thread_lock.acquire()
         print(f"\nStarting to process a batch of messages from {reference}")
         try:
             # get the graph from the conversation
-            self.update_ltm(message_buffer, reference)
+            self.update_ltm(message_buffer, reference, log_reference)
         finally:
             # release the lock
             self.thread_lock.release()
             print("\nFinished processing a batch of messages")
 
-    def update_ltm(self, buffer, reference="conversation"):
+    def update_ltm(self, buffer, reference="conversation", log_reference=""):
         # create a string from the conversation buffer using join
         conversation_string = "\n".join(buffer)
 
         # Prepare metadata for the graph
         # Get the current timestamp
         timestamp = datetime.now().isoformat()
-        metadata = {'timestamp': timestamp, "reference": reference}
+        metadata = {'timestamp': timestamp, "reference": reference, "log_reference": log_reference}
 
         # update the graph from the conversation string
         self.knowledge_store.process_text(conversation_string, metadata=metadata)

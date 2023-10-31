@@ -25,7 +25,7 @@ class VectorKnowledgeGraph:
             # this may have been loaded earlier / somewhere else, but we need to make sure it's loaded before we use it
 
             self.chat_llm = ChatOpenAI(
-                model_name='gpt-3.5-turbo',
+                model_name='gpt-3.5-turbo-16k',
                 temperature=0.0
             )
         else:
@@ -233,10 +233,14 @@ class VectorKnowledgeGraph:
 
     def build_graph_from_noun(self, query, similarity_threshold=0.8, depth=0, metadata_query=None,
                               return_metadata=False):
+        if len(self.triples_list) == 0:
+            return
         if metadata_query is None:
             index = self.faiss_index
             id_mapping = IdentityMap()
             triples_list = self.triples_list
+            if len(triples_list) == 0:
+                return
         else:
             index, id_mapping, triples_list = self._filter_index_by_metadata_query(metadata_query)
 
@@ -288,6 +292,9 @@ class VectorKnowledgeGraph:
 
     def build_graph_from_subject_verb(self, subject_verb, similarity_threshold=0.8, max_results=20, metadata_query=None,
                                       return_metadata=False):
+        if len(self.triples_list) == 0:
+            return
+
         if metadata_query is None:
             index = self.faiss_index
             id_mapping = IdentityMap()
@@ -397,6 +404,12 @@ class VectorKnowledgeGraph:
         return matching_triple_ids
 
     def get_summaries_from_topics(self, topics, similarity_threshold=0.5):
+        if not topics:
+            return ""
+        #if no triples exist, return empty string
+        if len(self.triples_list) == 0:
+            return ""
+
         summaries_with_headings = ["The following is what you know about the current topics:\n\n"]
         print(f"Getting summaries for topics: {topics}")
         for topic in topics:
