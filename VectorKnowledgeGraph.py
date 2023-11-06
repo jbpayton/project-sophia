@@ -1,9 +1,12 @@
 import json
+import re
 import time
 from functools import reduce
 import faiss
 import os
+from matplotlib import pyplot as plt
 
+import networkx as nx
 from tinydb import TinyDB, Query
 
 import numpy as np
@@ -189,8 +192,13 @@ class VectorKnowledgeGraph:
 
         # print("Got message: " + message.content)
 
+        def clean_json(json_string):
+            # Remove unescaped control characters
+            json_string = re.sub(r'[\x00-\x1F]', '', json_string)
+            return json_string
+
         # Parse the message.content and add to the graph
-        data = json.loads(message.content)
+        data = json.loads(clean_json(message.content))
         for triple in data['triples']:
             try:
                 subject = triple['subject']
@@ -289,6 +297,57 @@ class VectorKnowledgeGraph:
             return list(zip(collected_triples, collected_metadata))
         else:
             return list(set(collected_triples))
+
+    def visualize_graph_from_nouns(self, queries, similarity_threshold=0.8, depth=0, metadata_query=None):
+        if len(self.triples_list) == 0:
+            return
+
+        if metadata_query is None:
+            index = self.faiss_index
+            id_mapping = IdentityMap()
+            triples_list = self.triples_list
+            if len(triples_list) == 0:
+                return
+        else:
+            index, id_mapping, triples_list = self._filter_index_by_metadata_query(metadata_query)
+
+        G = nx.DiGraph()
+        visited = set()
+
+        def recursive_search(current_point, current_depth):
+            if current_depth > depth:
+                return
+
+            visited.add(current_point)
+            current_point_embedding = self.embedding_model.encode([current_point])[0]
+            D, I = index.search(current_point_embedding.reshape(1, -1), len(triples_list) * 3)
+
+            for i in range(0, len(I[0])):
+                idx = I[0][i]
+                mapped_idx = id_mapping[idx // 3]
+
+                if mapped_idx in self.id_to_triple:
+                    triple = self.id_to_triple[mapped_idx]
+                    subject, _, object_ = triple
+                    similarity = 1 - D[0][i]
+
+                    if similarity >= similarity_threshold:
+                        G.add_edge(subject, object_, weight=similarity, label=f'Similarity: {similarity:.2f}')
+
+                        next_point = object_ if subject == current_point else subject
+                        if next_point not in visited:
+                            recursive_search(next_point, current_depth + 1)
+
+        for query in queries:
+            recursive_search(query, 0)
+
+        pos = nx.spring_layout(G, seed=42)
+        nx.draw_networkx_nodes(G, pos, node_size=500)
+        nx.draw_networkx_edges(G, pos, width=1.0, alpha=0.5)
+        edge_labels = {(node1, node2): data['label'] for node1, node2, data in G.edges(data=True)}
+        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
+        nx.draw_networkx_labels(G, pos, font_size=12)
+        plt.show()
 
     def build_graph_from_subject_verb(self, subject_verb, similarity_threshold=0.8, max_results=20, metadata_query=None,
                                       return_metadata=False):
@@ -430,132 +489,143 @@ class VectorKnowledgeGraph:
 
 # run to test
 if __name__ == '__main__':
-    load_secrets()
-    model = ChatOpenAI(
-        model_name='gpt-4',
-        temperature=0.0,
-        openai_api_base=os.environ['LOCAL_TEXTGEN_API_BASE'],
-        openai_api_key="sk-111111111111111111111111111111111111111111111111"
-    )
-    # Create a vector knowledge graph
-    kgraph = VectorKnowledgeGraph(chat_llm=model)
 
-    # try to load the graph from file
-    loaded = kgraph.load()
+    # turn on tests as needed
+    visualize_test = False
+    graph_test = False
 
-    if not loaded:
-        # Example usage
-        text_1 = ("""Rachel is a young vampire girl with pale skin, long blond hair tied into two pigtails with black 
-        ribbons, and red eyes. She wears Gothic Lolita fashion with a frilly black gown and jacket, red ribbon bow tie, 
-        a red bat symbol design cross from the front to the back on her dress, another red cross on her shawl and bottom 
-        half, black pointy heel boots with a red cross, and a red ribbon on her right ankle. Physically, Rachel is said 
-        to look around 12 years old, however, she gives off an aura of someone far older than what she looks. 
-    
-        When she was young, her appearance was similar that of her current self. She wore a black dress with a red 
-        cross in the center and a large, black ribbon on the back, black ribbons in her hair, a white blouse, 
-        white bloomers, and black slippers. 
+    if visualize_test:
+        load_secrets()
+        k_graph = VectorKnowledgeGraph(path="Sophia_GraphStoreMemory")
+        k_graph.visualize_graph_from_nouns(["Sophia", "Joey", "Artificial Intelligence"], similarity_threshold=0.6, depth=3)
+
+    if graph_test:
+        load_secrets()
+        model = ChatOpenAI(
+            model_name='gpt-4',
+            temperature=0.0,
+            openai_api_base=os.environ['LOCAL_TEXTGEN_API_BASE'],
+            openai_api_key="sk-111111111111111111111111111111111111111111111111"
+        )
+        # Create a vector knowledge graph
+        kgraph = VectorKnowledgeGraph(chat_llm=model)
+
+        # try to load the graph from file
+        loaded = kgraph.load()
+
+        if not loaded:
+            # Example usage
+            text_1 = ("""Rachel is a young vampire girl with pale skin, long blond hair tied into two pigtails with black 
+            ribbons, and red eyes. She wears Gothic Lolita fashion with a frilly black gown and jacket, red ribbon bow tie, 
+            a red bat symbol design cross from the front to the back on her dress, another red cross on her shawl and bottom 
+            half, black pointy heel boots with a red cross, and a red ribbon on her right ankle. Physically, Rachel is said 
+            to look around 12 years old, however, she gives off an aura of someone far older than what she looks. 
         
-        In BlazBlue: Alter Memory during the hot spring scene in Episode 5, Rachel is seen wearing a dark blue one-piece 
-        bathing suit with red lines on both sides. 
-        
-        Rachel bears an incredibly striking resemblance to Raquel Alucard, save that the two have a very different dress 
-        sense, have different eye colors, hair style and a difference in appearance of age. """,
-                "https://blazblue.fandom.com/wiki/Rachel_Alucard#Appearance")
-    
-        text_2 = ("""Rachel is a stereotypical aristocratic heiress. She has an almost enchanting air of dignity and grace, 
-        yet is sarcastic and condescending to those she considers lower than her, always expecting them to have the 
-        highest standards of formality when conversing with her. Despite this, she does care deeply for her allies. Her 
-        butler, Valkenhayn, is fervently devoted to Rachel, as he was a loyal friend and respected rival to her father, 
-        the late Clavis Alucard, and she, in turn, treats him with a greater level of respect than anyone else. Rachel’s 
-        two familiars, Nago and Gii, despite taking punishment from her on a regular basis, remain loyal to her. Perhaps 
-        her most intriguing relationship is with Ragna. Although Rachel would never admit to it, she loves Ragna for his 
-        determination and unwillingness to give up even when the odds are against him, wanting him to reach his full 
-        potential as a warrior and as a person. In BlazBlue: Centralfiction, her feelings for Ragna become more evident 
-        as revealed in her arcade mode. She becomes even more concerned when she finds out that Naoto’s existence is 
-        affecting Ragna. This is most notably the only time she lost her composure. In the end of the game, Rachel sheds 
-        a tear over his large sword, despite forgetting Ragna. ""","https://blazblue.fandom.com/wiki/Rachel_Alucard#Personality")
-        
-        text_3 = ("""Ragna is sardonic, rude, and abrasive to anyone he comes 
-        across. He is also quick to anger, stubborn, and never misses a chance to use as much vulgar language as 
-        possible. In this regard, Ragna is similar to the stereotypical anime delinquent. This is caused mainly by Yūki 
-        Terumi practically destroying Ragna’s life, which has created a mass of hatred in him; stronger than that of any 
-        other individual. Ragna often becomes infuriated at first sight of Yūki Terumi, which he and/or Hazama often 
-        takes advantage of through taunting him. However, even in cases where he cannot win or is on the brink of death, 
-        Ragna possesses an undying will and persistence, refusing to give up even when he is clearly out matched, 
-        something many characters either hate or admire. 
-    
-        Beneath his gruff exterior, however, Ragna does possess a softer, more compassionate side. He chooses to keep up his 
-        public front because of the path he chose – that of revenge, as well as accepting the fact that he’s still someone 
-        who’s committed crimes such as murder. He does genuinely care for certain people, such as Taokaka, Rachel, Noel, 
-        Jūbei and, to an extent, his brother, Jin""", "https://blazblue.fandom.com/wiki/Ragna_the_Bloodedge#Personality")
+            When she was young, her appearance was similar that of her current self. She wore a black dress with a red 
+            cross in the center and a large, black ribbon on the back, black ribbons in her hair, a white blouse, 
+            white bloomers, and black slippers. 
+            
+            In BlazBlue: Alter Memory during the hot spring scene in Episode 5, Rachel is seen wearing a dark blue one-piece 
+            bathing suit with red lines on both sides. 
+            
+            Rachel bears an incredibly striking resemblance to Raquel Alucard, save that the two have a very different dress 
+            sense, have different eye colors, hair style and a difference in appearance of age. """,
+                    "https://blazblue.fandom.com/wiki/Rachel_Alucard#Appearance")
 
-        # load sample log to string
-        # with open('Sophia_logs/2023-09-09.txt', 'r') as file:
-        #    text = file.read().replace('\n', '')
+            text_2 = ("""Rachel is a stereotypical aristocratic heiress. She has an almost enchanting air of dignity and grace, 
+            yet is sarcastic and condescending to those she considers lower than her, always expecting them to have the 
+            highest standards of formality when conversing with her. Despite this, she does care deeply for her allies. Her 
+            butler, Valkenhayn, is fervently devoted to Rachel, as he was a loyal friend and respected rival to her father, 
+            the late Clavis Alucard, and she, in turn, treats him with a greater level of respect than anyone else. Rachel’s 
+            two familiars, Nago and Gii, despite taking punishment from her on a regular basis, remain loyal to her. Perhaps 
+            her most intriguing relationship is with Ragna. Although Rachel would never admit to it, she loves Ragna for his 
+            determination and unwillingness to give up even when the odds are against him, wanting him to reach his full 
+            potential as a warrior and as a person. In BlazBlue: Centralfiction, her feelings for Ragna become more evident 
+            as revealed in her arcade mode. She becomes even more concerned when she finds out that Naoto’s existence is 
+            affecting Ragna. This is most notably the only time she lost her composure. In the end of the game, Rachel sheds 
+            a tear over his large sword, despite forgetting Ragna. ""","https://blazblue.fandom.com/wiki/Rachel_Alucard#Personality")
 
-        print("Processing text...")
+            text_3 = ("""Ragna is sardonic, rude, and abrasive to anyone he comes 
+            across. He is also quick to anger, stubborn, and never misses a chance to use as much vulgar language as 
+            possible. In this regard, Ragna is similar to the stereotypical anime delinquent. This is caused mainly by Yūki 
+            Terumi practically destroying Ragna’s life, which has created a mass of hatred in him; stronger than that of any 
+            other individual. Ragna often becomes infuriated at first sight of Yūki Terumi, which he and/or Hazama often 
+            takes advantage of through taunting him. However, even in cases where he cannot win or is on the brink of death, 
+            Ragna possesses an undying will and persistence, refusing to give up even when he is clearly out matched, 
+            something many characters either hate or admire. 
+        
+            Beneath his gruff exterior, however, Ragna does possess a softer, more compassionate side. He chooses to keep up his 
+            public front because of the path he chose – that of revenge, as well as accepting the fact that he’s still someone 
+            who’s committed crimes such as murder. He does genuinely care for certain people, such as Taokaka, Rachel, Noel, 
+            Jūbei and, to an extent, his brother, Jin""", "https://blazblue.fandom.com/wiki/Ragna_the_Bloodedge#Personality")
+
+            # load sample log to string
+            # with open('Sophia_logs/2023-09-09.txt', 'r') as file:
+            #    text = file.read().replace('\n', '')
+
+            print("Processing text...")
+            start = time.time()
+            kgraph.process_text(text_1[0], {"reference": text_1[1]})
+            kgraph.process_text(text_2[0], {"reference": text_2[1]})
+            kgraph.process_text(text_3[0], {"reference": text_3[1]})
+            print(time.time() - start)
+
+            kgraph.save()
+
+        text_triples = kgraph.triples_list
+
+        print("Text triples:")
+        print(text_triples)
+
+        print("Building graph...")
         start = time.time()
-        kgraph.process_text(text_1[0], {"reference": text_1[1]})
-        kgraph.process_text(text_2[0], {"reference": text_2[1]})
-        kgraph.process_text(text_3[0], {"reference": text_3[1]})
+        query = "Rachel"
+        graph = kgraph.build_graph_from_noun(query, 0.7, 0)
         print(time.time() - start)
+        print("Query: " + query)
+        print(graph)
 
-        kgraph.save()
+        print("Building graph...")
+        start = time.time()
+        query = "Ragna"
+        graph = kgraph.build_graph_from_noun(query, 0.7, 0)
+        print(time.time() - start)
+        print("Query: " + query)
+        print(graph)
+        print("Summarizing graph...")
+        print(kgraph.summarize_graph(graph))
 
-    text_triples = kgraph.triples_list
+        print("Building graph using filter...")
+        start = time.time()
+        query = "Ragna"
+        metadata_filter = {"reference": "https://blazblue.fandom.com/wiki/Ragna_the_Bloodedge#Personality"}
+        graph = kgraph.build_graph_from_noun(query, 0.7, 0, metadata_query=metadata_filter, return_metadata=True)
+        print(time.time() - start)
+        print("Query: " + query)
+        print(graph)
 
-    print("Text triples:")
-    print(text_triples)
+        print("Building graph...")
+        start = time.time()
+        query = "Rachel"
+        graph = kgraph.build_graph_from_noun(query, 0.7, 1)
+        print(time.time() - start)
+        print("Query: " + query)
+        print(graph)
 
-    print("Building graph...")
-    start = time.time()
-    query = "Rachel"
-    graph = kgraph.build_graph_from_noun(query, 0.7, 0)
-    print(time.time() - start)
-    print("Query: " + query)
-    print(graph)
+        print("Building graph...")
+        start = time.time()
+        subject_verb_tuple = ('Rachel', 'wears')
 
-    print("Building graph...")
-    start = time.time()
-    query = "Ragna"
-    graph = kgraph.build_graph_from_noun(query, 0.7, 0)
-    print(time.time() - start)
-    print("Query: " + query)
-    print(graph)
-    print("Summarizing graph...")
-    print(kgraph.summarize_graph(graph))
+        graph = kgraph.build_graph_from_subject_verb(subject_verb_tuple, similarity_threshold=0.7, return_metadata=True)
+        print(time.time() - start)
+        print(subject_verb_tuple)
+        print(graph)
+        print("Summary: ")
+        print(kgraph.summarize_graph(graph))
 
-    print("Building graph using filter...")
-    start = time.time()
-    query = "Ragna"
-    metadata_filter = {"reference": "https://blazblue.fandom.com/wiki/Ragna_the_Bloodedge#Personality"}
-    graph = kgraph.build_graph_from_noun(query, 0.7, 0, metadata_query=metadata_filter, return_metadata=True)
-    print(time.time() - start)
-    print("Query: " + query)
-    print(graph)
-
-    print("Building graph...")
-    start = time.time()
-    query = "Rachel"
-    graph = kgraph.build_graph_from_noun(query, 0.7, 1)
-    print(time.time() - start)
-    print("Query: " + query)
-    print(graph)
-
-    print("Building graph...")
-    start = time.time()
-    subject_verb_tuple = ('Rachel', 'wears')
-
-    graph = kgraph.build_graph_from_subject_verb(subject_verb_tuple, similarity_threshold=0.7, return_metadata=True)
-    print(time.time() - start)
-    print(subject_verb_tuple)
-    print(graph)
-    print("Summary: ")
-    print(kgraph.summarize_graph(graph))
-
-    print("getting all items from Ragna Article")
-    start = time.time()
-    triples = kgraph.query_triples_from_metadata({"reference": "https://blazblue.fandom.com/wiki/Ragna_the_Bloodedge#Personality"})
-    print(time.time() - start)
-    print(triples)
+        print("getting all items from Ragna Article")
+        start = time.time()
+        triples = kgraph.query_triples_from_metadata({"reference": "https://blazblue.fandom.com/wiki/Ragna_the_Bloodedge#Personality"})
+        print(time.time() - start)
+        print(triples)
 

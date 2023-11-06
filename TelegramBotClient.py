@@ -22,7 +22,7 @@ profile_name = config['Avatar']['profile_name']
 
 profile = util.load_profile(profile_name)
 
-avatar = get_avatar_agent(profile)
+avatar = get_avatar_agent(profile, telegram_bot=bot)
 
 
 class IsAllowedUser(telebot.custom_filters.SimpleCustomFilter):
@@ -48,6 +48,7 @@ def send_welcome(message):
 @bot.message_handler(func=lambda msg: True, is_allowed_user=True)
 def echo_all(message):
     avatar.receive(message.from_user.first_name, message.text)
+    avatar.set_chat_id(message.chat.id)
 
     while True:
         bot.send_chat_action(chat_id=message.chat.id, action="typing")

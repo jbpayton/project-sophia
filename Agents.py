@@ -1,7 +1,9 @@
 import time
 import re
+import threading
 from typing import List, Dict, Optional, Any, Tuple, Union
 
+from aiofiles import os
 from langchain import WikipediaAPIWrapper
 from langchain.agents.agent import ExceptionTool
 from langchain.agents.agent_toolkits import FileManagementToolkit
@@ -228,6 +230,8 @@ class DialogueAgentWithTools(DialogueAgent):
             model,
             tools: List,
             TTSEngine=None,
+            telegram_bot=None,
+            timer_interval: int = 15 * 60,
     ) -> None:
         super().__init__(name, system_message, model)
         self.tools = tools
@@ -242,7 +246,104 @@ class DialogueAgentWithTools(DialogueAgent):
         self.message_history = self.ltm_store.conversation_logger.load_last_n_lines(100)
         ToolRegistry().set_tools(name, self.tools)
 
+        self.telegram_bot = telegram_bot
+        self.chat_id = self.get_chat_id()
+
+        self.timer_interval = timer_interval
+        self.timer = None
+        self.start_timer()
+
+        # test code - lets just call the timer function at first
+        self.timer_function()
+
+    def start_timer(self):
+        # Cancel the existing timer if it's running
+        if self.timer is not None:
+            self.timer.cancel()
+
+        # Create a new timer and start it
+        self.timer = threading.Timer(self.timer_interval, self.on_timer)
+        self.timer.start()
+
+    def on_timer(self):
+        self.timer_function()
+        self.start_timer()  # re-start the timer
+
+    def timer_function(self):
+        print("Timer function called!")
+        # This is the function that gets called every self.timer_interval seconds
+        has_telegram_bot = self.telegram_bot is not None and self.chat_id is not None
+        if has_telegram_bot:
+            self.telegram_bot.send_message(self.chat_id, "I should take this opportunity to learn something new...")
+
+        self.receive(name=f"{self.name}'s (Internal Monologue)",
+                     message="I will take an opportunity to learn something "
+                             "new in my spare time. I will take initiative "
+                             "and learn something that fulfills my own "
+                             "learning goals (I don't need to ask, it's my "
+                             "choice!), and then send a text only summary "
+                             "to the chat. With any important links.")
+
+        while True:
+            if has_telegram_bot:
+                self.telegram_bot.send_chat_action(chat_id=self.chat_id, action="typing")
+            avatar_response = self.send()
+
+            if has_telegram_bot:
+                self.telegram_bot.send_message(self.chat_id, avatar_response)
+            if self.has_picture_to_show:
+                if has_telegram_bot:
+                    self.telegram_bot.send_photo(self.chat_id, photo=open(self.image_to_show, 'rb'))
+                self.has_picture_to_show = False
+                self.needs_to_think_more = False
+                break
+            if not self.needs_to_think_more:
+                break
+            if has_telegram_bot:
+                self.telegram_bot.send_chat_action(chat_id=self.chat_id, action="typing")
+
+        if has_telegram_bot:
+            self.telegram_bot.send_message(self.chat_id, "Let me draw a picture of what I've learned...")
+
+        self.receive(name=f"{self.name}'s (Internal Monologue)", message="Next, I should create a selfie picture representing "
+                                                                         "me and what I learned and send it to the chat!")
+
+        while True:
+            if has_telegram_bot:
+                self.telegram_bot.send_chat_action(chat_id=self.chat_id, action="typing")
+            avatar_response = self.send()
+
+            if has_telegram_bot:
+                self.telegram_bot.send_message(self.chat_id, avatar_response)
+            if self.has_picture_to_show:
+                if has_telegram_bot:
+                    self.telegram_bot.send_photo(self.chat_id, photo=open(self.image_to_show, 'rb'))
+                self.has_picture_to_show = False
+                self.needs_to_think_more = False
+                break
+            if not self.needs_to_think_more:
+                break
+            if has_telegram_bot:
+                self.telegram_bot.send_chat_action(chat_id=self.chat_id, action="typing")
+
+    def set_chat_id(self, chat_id):
+        if self.chat_id is None:
+            self.chat_id = chat_id
+            # store the chat id to a file
+            with open("chat_id.txt", "w") as f:
+                f.write(str(chat_id))
+
+    def get_chat_id(self):
+        # read the chat id from a file, make sure it's an integer (and return None if it's not)
+        try:
+            with open("chat_id.txt", "r") as f:
+                return int(f.read())
+        except(ValueError, FileNotFoundError):
+            print("No chat id found in file")
+            return None
+
     def receive(self, name: str, message: str) -> None:
+        print(f"{name}: {message}")
         self.ltm_store.accept_message(message, name=name)
 
     def send(self) -> str:
@@ -250,6 +351,9 @@ class DialogueAgentWithTools(DialogueAgent):
         Applies the chatmodel to the message history
         and returns the message string
         """
+
+        # reset the timer, just in case
+        self.start_timer()
 
         print("Number of messages in history: ", len(self.message_history))
 
@@ -270,7 +374,8 @@ class DialogueAgentWithTools(DialogueAgent):
 
             message = self.model(
                 [
-                    SystemMessage(role=self.name, content=self.system_message.content + conversation_mode_prompt + summary + topic_knowledge),
+                    SystemMessage(role=self.name,
+                                  content=self.system_message.content + conversation_mode_prompt + summary + topic_knowledge),
                     HumanMessage(content="\n".join(recent_history + [self.prefix])),
                 ]
             )
@@ -290,7 +395,8 @@ class DialogueAgentWithTools(DialogueAgent):
 
             recent_history, summary, topic_knowledge = self.ltm_store.summarize_history()
 
-            response = agent_chain({"input": "\n".join([self.system_message.content] + [topic_knowledge] + recent_history)})
+            response = agent_chain(
+                {"input": "\n".join([self.system_message.content] + [topic_knowledge] + recent_history)})
 
             message = AIMessage(content=response["output"])
 
@@ -322,6 +428,10 @@ class DialogueAgentWithTools(DialogueAgent):
 
         self.ltm_store.accept_message(message, name=self.name)
 
+        if not self.needs_to_think_more:
+            # reset the timer
+            self.start_timer()
+
         return message.content
 
 
@@ -351,7 +461,7 @@ class UserAgent(DialogueAgent):
         print(f"{name}: {message}")
 
 
-def get_avatar_agent(profile=None, avatar_tts=None):
+def get_avatar_agent(profile=None, avatar_tts=None, telegram_bot=None):
     # Define system prompts for our  agent
     system_prompt_avatar = SystemMessage(role=profile['name'],
                                          content=profile['personality'])
@@ -372,5 +482,6 @@ def get_avatar_agent(profile=None, avatar_tts=None):
                                     model=ChatOpenAI(model_name='gpt-4', streaming=True,
                                                      callbacks=[StreamingStdOutCallbackHandler()]),
                                     tools=tools,
-                                    TTSEngine=avatar_tts)
+                                    TTSEngine=avatar_tts,
+                                    telegram_bot=telegram_bot)
     return avatar
