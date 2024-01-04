@@ -3,7 +3,7 @@ using UnityEngine;
 public class MicrophoneManager : MonoBehaviour
 {
     private AudioClip microphoneClip;
-    private int sampleRate = 44100;
+    private int sampleRate = 16000;
     private int lastSample = 0;
     private float[] sampleBuffer;
 

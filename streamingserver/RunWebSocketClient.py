@@ -9,9 +9,9 @@ async def handle_audio(uri):
         p = pyaudio.PyAudio()
         input_stream = p.open(format=pyaudio.paInt16,
                               channels=1,
-                              rate=44100,
+                              rate=16000,
                               input=True,
-                              frames_per_buffer=2048)
+                              frames_per_buffer=1024)
 
         # Set up audio output (speaker)
         output_stream = p.open(format=pyaudio.paInt16,
