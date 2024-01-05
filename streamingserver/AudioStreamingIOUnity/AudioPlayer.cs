@@ -3,12 +3,12 @@ using UnityEngine;
 
 public class AudioPlayer : MonoBehaviour
 {
-    public int initialBufferThreshold = 44100/10; // Default value 0.05s, can be adjusted in the Unity Editor
+    public int initialBufferThreshold = 16000/10; // Default value 0.05s, can be adjusted in the Unity Editor
     private bool initialBufferFilled = false;
     private AudioSource audioSource;
     private Queue<float> audioDataQueue;
     private AudioClip dynamicAudioClip;
-    private int sampleRate = 44100;
+    private int sampleRate = 16000;
     private int samplesPerMessage = 2048; // Assuming each WebSocket message contains this many samples
     private float[] sampleBuffer;
 
