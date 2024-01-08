@@ -96,11 +96,13 @@ class TTSClient:
 if __name__ == "__main__":
     from util import load_secrets
     load_secrets("../secrets.json")
-    azureSpeech = TTSClient(silent=True)
-    audio = azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm", mood="sad")
-
-
-    azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm", mood="hopeful",
-                              filename="houtput.wav")
-    azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm", mood="angry",
-                              filename="aoutput.wav")
+    azureSpeech = TTSClient(silent=False)
+    audio = azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm", mood="angry")
+    audio = azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm",
+                                        mood="calm")
+    audio = azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm",
+                                        mood="cheerful")
+    audio = azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm",
+                                        mood="excited")
+    audio = azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm",
+                                        mood="shouting")

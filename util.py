@@ -12,6 +12,12 @@ def load_secrets(filename='secrets.json'):
 
 
 def load_profile(profile_name, base_directory="./profiles"):
+    # first check if the profile exists
+    if not os.path.exists(base_directory):
+        # try one directory up
+        base_directory = os.path.join("..", base_directory)
+        if not os.path.exists(base_directory):
+            raise FileNotFoundError(f"Profiles directory '{base_directory}' not found.")
     # Convert the provided profile name to lowercase
     profile_name_lower = profile_name.lower()
 

@@ -15,8 +15,21 @@ import torch
 
 import simpleaudio as sa
 
+# we need to define a header for our outgoing websocket messages
+# this header will be used to determine the type of message being sent
+# and how it should be handled
+
+# the header is a 4-byte string
+# the first byte is the message type
+# the remaining 3 bytes are undefined for now
+# the message type is one of the following:
+#   0 - text
+#   1 - audio
+#   2 - avatar action
+
 
 # Global variable to determine the mode of operation
+from NewTypeAgent import NewTypeAgent
 from audio import TTSClient
 
 from util import load_secrets
@@ -27,10 +40,13 @@ TEST_MODE = "--test" in sys.argv
 
 # if we are not in test mode, we need to load whisper before any connections are made
 if not TEST_MODE:
+    agent = NewTypeAgent("Sophia")
     whisper_model = whisper.load_model('base')
 
 text_queue = queue.Queue()  # Queue for text to be synthesized
 audio_queue = queue.Queue()  # Queue for synthesized audio data
+action_queue = queue.Queue()  # Queue for avatar actions
+client_message_queue = queue.Queue()  # Queue for text to be sent to the client
 
 
 # Function to stream MP3 file audio in test mode
@@ -43,7 +59,10 @@ async def stream_mp3(websocket, mp3_file):
     try:
         while True:  # Loop to continuously stream the MP3 file
             for i in range(0, len(raw_data), chunk_size):
-                await websocket.send(raw_data[i:i + chunk_size])
+                # append the header to the chunk
+                header = bytearray([1, 0, 0, 0])
+                await websocket.send(header + raw_data[i:i + chunk_size])
+                # await websocket.send(raw_data[i:i + chunk_size])
     except websockets.ConnectionClosed:
         print("Connection for MP3 streaming closed")
 
@@ -162,12 +181,24 @@ async def handle_outgoing_audio(websocket):
         FRAME_DURATION = FRAME_DURATION - 0.03
 
         while True:
+
             if not audio_queue.empty():
                 audio_data = audio_queue.get()
                 # Split audio_data into smaller chunks
                 for i in range(0, len(audio_data), CHUNK_SIZE):
-                    await websocket.send(audio_data[i:i+CHUNK_SIZE])
+                    # send audio data with the header
+
+                    header = bytearray([1, 0, 0, 0])
+                    await websocket.send(header + audio_data[i:i+CHUNK_SIZE])
                     #await asyncio.sleep(FRAME_DURATION)  # Control the rate of sending
+            if not action_queue.empty():
+                action = action_queue.get()
+                header = bytearray([2, 0, 0, 0])
+                await websocket.send(header + action.encode())
+            if not client_message_queue.empty():
+                message = client_message_queue.get()
+                header = bytearray([0, 0, 0, 0])
+                await websocket.send(header + message.encode())
             else:
                 # Generate and send filler audio when there's no TTS data
                 #filler_audio = generate_audio_data(duration_seconds=FRAME_DURATION/2, sample_rate=16000, tone=False)
@@ -185,12 +216,18 @@ async def audio_handler(websocket, path):
 
 
 def tts_processor():
-    azure_speech = TTSClient(silent=True)
+    azure_speech = TTSClient(voice=agent.profile['voice'], silent=True)
     while True:
         text = text_queue.get()  # Wait for text from the STT process
         if text is None:
             break  # None is used as a signal to stop the thread
-        audio_data = azure_speech.speak_to_stream(text, mood="sad")
+
+        response, mood, inner_monologue = agent.send(text)
+        print(response)
+        action_queue.put("/" + mood)
+        client_message_queue.put(response)
+
+        audio_data = azure_speech.speak_to_stream(response, mood=mood)
         audio_queue.put(audio_data)  # Place the TTS audio into the outgoing queue
 
 # Function to start the TTS processor thread
@@ -201,7 +238,9 @@ def start_tts_processor():
 
 async def main():
     tts_thread = start_tts_processor()  # Start the TTS processor thread
-    async with websockets.serve(audio_handler, "localhost", 8765):
+    #async with websockets.serve(audio_handler, "localhost", 8765)
+    #listen on all interfaces
+    async with websockets.serve(audio_handler, None, 8765):
         print("Server started. Awaiting connections...")
         await asyncio.Future()  # This will keep the server running indefinitely
     tts_thread.join()  # Wait for the TTS processor thread to complete
