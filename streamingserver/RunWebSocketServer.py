@@ -26,6 +26,7 @@ import simpleaudio as sa
 #   0 - text
 #   1 - audio
 #   2 - avatar action
+#   3 - client message
 
 
 # Global variable to determine the mode of operation
@@ -44,6 +45,8 @@ if not TEST_MODE:
     whisper_model = whisper.load_model('base')
 
 text_queue = queue.Queue()  # Queue for text to be synthesized
+incoming_message_queue = queue.Queue()  # Queue for incoming text messages
+
 audio_queue = queue.Queue()  # Queue for synthesized audio data
 action_queue = queue.Queue()  # Queue for avatar actions
 client_message_queue = queue.Queue()  # Queue for text to be sent to the client
@@ -97,7 +100,7 @@ def play_audio_buffer(audio_buffer):
 
 
 # Coroutine for handling incoming audio data
-async def handle_incoming_audio(websocket):
+async def handle_incoming_data(websocket):
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=1024)
 
@@ -139,26 +142,38 @@ async def handle_incoming_audio(websocket):
             while True:
                 data = await websocket.recv()
 
-                if is_silence(data):
-                    silence_duration += len(data)
-                    # Check for end of speech segment
-                    if total_speech_duration >= speech_threshold_bytes and silence_duration >= silence_threshold_bytes:
-                        # Process accumulated speech frames
-                        audio_data = b''.join(speech_frames)
-                        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
-                        result = whisper_model.transcribe(audio_np)
-                        print(result["text"])
-                        text_queue.put(result["text"])
+                # look at the first byte to determine what type of data it is
+                data_type = data[0]
+                if data_type == 1:
+                    incoming_audio = data[4:]
 
-                        # Reset buffers and counters
-                        speech_frames = []
-                        total_speech_duration = 0
-                    # Continue accumulating silence if not enough speech yet
+                    if is_silence(incoming_audio):
+                        silence_duration += len(incoming_audio)
+                        # Check for end of speech segment
+                        if total_speech_duration >= speech_threshold_bytes and silence_duration >= silence_threshold_bytes:
+                            # Process accumulated speech frames
+                            audio_data = b''.join(speech_frames)
+                            audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+                            result = whisper_model.transcribe(audio_np)
+                            print(result["text"])
+                            text_queue.put(result["text"])
+
+                            # Reset buffers and counters
+                            speech_frames = []
+                            total_speech_duration = 0
+                        # Continue accumulating silence if not enough speech yet
+                    else:
+                        # Reset silence duration and accumulate speech
+                        silence_duration = 0
+                        speech_frames.append(incoming_audio)
+                        total_speech_duration += len(incoming_audio)
+                elif data_type == 3:
+                    # Put the text in the incoming message queue
+                    decoded_string = data[4:].decode("utf-8")
+                    incoming_message_queue.put("Incoming Message: " + decoded_string)
+                    print(decoded_string)
                 else:
-                    # Reset silence duration and accumulate speech
-                    silence_duration = 0
-                    speech_frames.append(data)
-                    total_speech_duration += len(data)
+                    print("Unknown data type received")
 
         except websockets.ConnectionClosed:
             print("Connection for incoming audio closed")
@@ -169,7 +184,7 @@ async def handle_incoming_audio(websocket):
 
 
 # Coroutine for handling outgoing audio data
-async def handle_outgoing_audio(websocket):
+async def handle_outgoing_data(websocket):
     if TEST_MODE:
         mp3_file = "your_audio_file.mp3"
         await stream_mp3(websocket, mp3_file)
@@ -208,8 +223,8 @@ async def handle_outgoing_audio(websocket):
 # WebSocket server handler
 async def audio_handler(websocket, path):
     print("New connection established")
-    incoming_task = asyncio.ensure_future(handle_incoming_audio(websocket))
-    outgoing_task = asyncio.ensure_future(handle_outgoing_audio(websocket))
+    incoming_task = asyncio.ensure_future(handle_incoming_data(websocket))
+    outgoing_task = asyncio.ensure_future(handle_outgoing_data(websocket))
 
     await asyncio.gather(incoming_task, outgoing_task)
     print("Connection handler completed")
