@@ -5,7 +5,7 @@ public class AudioPlayer : MonoBehaviour
 {
     public int initialBufferThreshold = 16000/10; // Default value 0.05s, can be adjusted in the Unity Editor
     private bool initialBufferFilled = false;
-    private AudioSource audioSource;
+    public AudioSource audioSource;
     private Queue<float> audioDataQueue;
     private AudioClip dynamicAudioClip;
     private int sampleRate = 16000;
@@ -14,7 +14,6 @@ public class AudioPlayer : MonoBehaviour
 
     void Start()
     {
-        audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
         {
             Debug.LogError("AudioSource component not found!");
