@@ -239,7 +239,7 @@ def tts_processor():
 
         response, mood, inner_monologue = agent.send(text)
         print(response)
-        action_queue.put("/" + mood)
+        action_queue.put("Emote " + mood)
         client_message_queue.put(response)
 
         audio_data = azure_speech.speak_to_stream(response, mood=mood)
