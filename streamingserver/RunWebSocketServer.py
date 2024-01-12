@@ -1,7 +1,7 @@
 import asyncio
 import queue
 import threading
-
+import json
 import websockets
 import pyaudio
 import wave
@@ -170,8 +170,7 @@ async def handle_incoming_data(websocket):
                 elif data_type == 3:
                     # Put the text in the incoming message queue
                     decoded_string = data[4:].decode("utf-8")
-                    incoming_message_queue.put("Incoming Message: " + decoded_string)
-                    print(decoded_string)
+                    incoming_message_queue.put(decoded_string)
                 else:
                     print("Unknown data type received")
 
@@ -237,9 +236,19 @@ def tts_processor():
         if text is None:
             break  # None is used as a signal to stop the thread
 
-        response, mood, inner_monologue = agent.send(text)
+        response, mood, inner_monologue, actions = agent.send(text)
         print(response)
-        action_queue.put("Emote " + mood)
+
+        # create a json object to send to the client
+        emote_json = json.dumps({"actionName": "Emote", "emoteName": mood})
+        action_queue.put(emote_json)
+
+        for action in actions:
+            print("Sending action: " + str(action) + " to client")
+            # make sure the action is a string
+            action = json.dumps(action)
+            action_queue.put(action)
+
         client_message_queue.put(response)
 
         audio_data = azure_speech.speak_to_stream(response, mood=mood)
@@ -251,8 +260,22 @@ def start_tts_processor():
     thread.start()
     return thread
 
+def observation_processor():
+    while True:
+        observation_text = incoming_message_queue.get()  # Wait for text from client
+        if observation_text is None:
+            break  # None is used as a signal to stop the thread
+        print("New observation: " + observation_text)
+        agent.accept_observation(observation_text)
+
+def start_observation_processor():
+    thread = threading.Thread(target=observation_processor)
+    thread.start()
+    return thread
+
 async def main():
     tts_thread = start_tts_processor()  # Start the TTS processor thread
+    observation_thread = start_observation_processor()
     #async with websockets.serve(audio_handler, "localhost", 8765)
     #listen on all interfaces
     async with websockets.serve(audio_handler, None, 8765):

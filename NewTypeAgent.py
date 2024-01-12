@@ -1,5 +1,7 @@
 from openai import OpenAI
 import util
+import json
+import re
 
 
 class NewTypeAgent:
@@ -8,20 +10,57 @@ class NewTypeAgent:
         # load profile
         self.profile = util.load_profile(name)
 
-        self.MONOLOGUE_PROMPT = "Before everything you say, include internal monologue in curly brackets."
+        self.observation = ""
+        self.observation_updated = False
 
-        self.EMOTION_PROMPT = "Express your emotions by leading a sentence with parenthesis with your emotional " \
-                              "state. Valid emotional states are as follows: Default, Angry, Cheerful, Excited, " \
-                              "Friendly, Hopeful, Sad, Shouting, Terrified, Unfriendly, Whispering."
-
-        self.system_prompt = self.profile['personality'] + self.MONOLOGUE_PROMPT + self.EMOTION_PROMPT
+        self.generate_system_prompt()
         self.client = OpenAI()
 
         self.messages = [
             {"role": "system", "content": self.system_prompt}
         ]
 
+    def generate_system_prompt(self, observation=None):
+        self.MONOLOGUE_PROMPT = "Before everything you say, include internal monologue in curly brackets."
+        self.EMOTION_PROMPT = "Express your emotions by leading a sentence with parenthesis with your emotional " \
+                              "state. Valid emotional states are as follows: Default, Angry, Cheerful, Excited, " \
+                              "Friendly, Hopeful, Sad, Shouting, Terrified, Unfriendly, Whispering."
+        if observation is not None:
+            self.system_prompt = self.profile['personality'] + self.MONOLOGUE_PROMPT + self.EMOTION_PROMPT + observation
+        else:
+            self.system_prompt = self.profile['personality'] + self.MONOLOGUE_PROMPT + self.EMOTION_PROMPT
+
+        return self.system_prompt
+
+    @staticmethod
+    def extract_json_objects(text):
+        # Remove triple backticks
+        text = text.replace('```json', '')
+        text = text.replace('```', '')
+
+        pattern = r'\{.*?\}'
+        matches = re.findall(pattern, text, re.DOTALL)
+
+        json_objects = []
+        for match in matches:
+            try:
+                json_obj = json.loads(match)
+                if "actionName" in json_obj:
+                    json_objects.append(json_obj)
+            except json.JSONDecodeError:
+                continue  # Skip invalid JSON
+
+        # Optional: Remove the JSON objects from the original text
+        text_without_json = re.sub(pattern, "", text, flags=re.DOTALL).strip()
+
+        return json_objects, text_without_json
+
     def send(self, message):
+        if self.observation_updated:
+            self.generate_system_prompt(self.observation)
+            self.observation_updated = False
+            self.messages.append({"role": "system", "content": self.system_prompt})
+
         self.messages.append({"role": "user", "content": message})
         response = self.client.chat.completions.create(
             model="gpt-4-1106-preview",
@@ -43,7 +82,14 @@ class NewTypeAgent:
         # trim whitespace from response
         response = response.strip()
 
-        return response, emotion, monologue
+        actions, response = self.extract_json_objects(response)
+        response = response.strip()
+
+        return response, emotion, monologue, actions
+
+    def accept_observation(self, observation):
+        self.observation = observation
+        self.observation_updated = True
 
 
 if __name__ == "__main__":
