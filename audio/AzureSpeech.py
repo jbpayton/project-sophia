@@ -59,6 +59,18 @@ class TTSClient:
 
 
     def speak_to_stream(self, text_input, mood="cheerful", style_degree=2, filename="output.wav"):
+        # make sure that the input text is a valid sting for TTS
+        if not isinstance(text_input, str):
+            return None
+        # text input must contain at least one alphanumeric character
+        if not any(char.isalnum() for char in text_input):
+            return None
+
+        if not isinstance(mood, str):
+            mood = "default"
+        if len(mood) == 0:
+            mood = "default"
+
         # Construct SSML with the specified mood
         ssml_text = f"""
                 <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
@@ -97,6 +109,21 @@ if __name__ == "__main__":
     from util import load_secrets
     load_secrets("../secrets.json")
     azureSpeech = TTSClient(silent=False)
+    audio = azureSpeech.speak_to_stream("   .. ",
+                                        mood="angry")
+    audio = azureSpeech.speak_to_stream("",
+                                        mood="angry")
+    audio = azureSpeech.speak_to_stream(None)
+
+    audio = azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm",
+                                        mood="")
+
+    audio = azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm",
+                                        mood=None)
+
+    audio = azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm",
+                                        mood="billy")
+
     audio = azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm", mood="angry")
     audio = azureSpeech.speak_to_stream("I'm big billy, the biggest wet willy, i gotta go clearly... hmmm",
                                         mood="calm")

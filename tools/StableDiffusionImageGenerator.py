@@ -35,7 +35,7 @@ class StableDiffusionImageGenerator():
 
         # Load the pipeline.
 
-        model_path = "SDModels/meinamix_meinaV11"
+        model_path = "SDModels/aingdiffusion_v90"
 
         if clip_skip > 1:
             self.pipe = diffusers.DiffusionPipeline.from_pretrained(
@@ -169,5 +169,8 @@ if __name__ == "__main__":
               "detailed large eyes, sparkling eyes, glowing blue eyes, black sweater, long sleeves, black jeans,"
     action = "reading book"
     setting = "in a digital space"
-    StableDiffusionImageGenerator().generate_image(style + ", " + subject + ", " + action + ", " + setting)
-    StableDiffusionImageGenerator().generate_image(style + ", " + subject + ", " + action + ", " + setting)
+    #StableDiffusionImageGenerator().generate_image(style + ", " + subject + ", " + action + ", " + setting)
+    #StableDiffusionImageGenerator().generate_image(style + ", " + subject + ", " + action + ", " + setting)
+
+    subject = "classroom"
+    StableDiffusionImageGenerator().generate_image(style + ", " + setting)

@@ -254,7 +254,8 @@ def tts_processor():
         client_message_queue.put(response)
 
         audio_data = azure_speech.speak_to_stream(response, mood=mood)
-        audio_queue.put(audio_data)  # Place the TTS audio into the outgoing queue
+        if audio_data is not None:
+            audio_queue.put(audio_data)  # Place the TTS audio into the outgoing queue
 
 # Function to start the TTS processor thread
 def start_tts_processor():
