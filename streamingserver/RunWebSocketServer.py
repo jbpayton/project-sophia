@@ -125,7 +125,7 @@ async def handle_incoming_data(websocket):
             wf.close()
     else:
         # Define time-based thresholds in seconds
-        SOME_SPEECH_THRESHOLD = 1.00
+        SOME_SPEECH_THRESHOLD = 0.75
         SOME_SILENCE_THRESHOLD = 0.67
         sr = 16000
 
@@ -240,6 +240,8 @@ def tts_processor():
         print(response)
 
         # create a json object to send to the client
+        if mood is None:
+            mood = "neutral"
         emote_json = json.dumps({"actionName": "Emote", "emoteName": mood})
         action_queue.put(emote_json)
 
