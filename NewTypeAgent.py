@@ -1,3 +1,5 @@
+import datetime
+
 from openai import OpenAI
 import util
 import json
@@ -50,10 +52,18 @@ class NewTypeAgent:
         print("Text without JSON: " + text_without_json)
         return json_objects, text_without_json
 
+    @staticmethod
+    def prepend_timestamp(text):
+        # first format the date+timestamp
+        timestamp_string = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return f"[{timestamp_string}] {text}"
+
     def send(self, message):
         if self.observation_updated:
             self.observation_updated = False
             self.messages.append({"role": "system", "content": self.observation})
+
+        message = self.prepend_timestamp(message)
 
         self.messages.append({"role": "user", "content": message})
         response = self.client.chat.completions.create(
@@ -98,7 +108,7 @@ class NewTypeAgent:
         return content, emotion, monologue, actions
 
     def accept_observation(self, observation):
-        self.observation = observation
+        self.observation = self.prepend_timestamp(observation)
         self.observation_updated = True
 
 
@@ -109,7 +119,7 @@ if __name__ == "__main__":
         # prompt user for input
         message = input("Enter a message: ")
         # send message to agent
-        response, emotion, monologue = agent.send(message)
+        response, emotion, monologue, actions = agent.send(message)
         # print response
         print(response)
 
