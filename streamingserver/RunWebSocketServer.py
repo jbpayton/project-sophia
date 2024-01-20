@@ -285,5 +285,6 @@ async def main():
         print("Server started. Awaiting connections...")
         await asyncio.Future()  # This will keep the server running indefinitely
     tts_thread.join()  # Wait for the TTS processor thread to complete
+    observation_thread.join() # Wait for the observation processor thread to complete
 
 asyncio.run(main())
