@@ -83,7 +83,7 @@ def execute_tool(tool_call_json, tool_dict):
 
     #make sure that the actionName is in the json
     if "actionName" not in tool_call_json:
-        return "No actionName provided in the tool call."
+        return "No actionName provided in the tool call.", False
 
     tool_name = tool_call_json["actionName"]
 
@@ -92,23 +92,23 @@ def execute_tool(tool_call_json, tool_dict):
 
     # first make sure that the tool exists
     if tool_name not in tool_dict:
-        return f"Tool {tool_name} not found."
+        return f"Tool {tool_name} not found.", False
 
     # then make sure all of the parameters in params are in the tool's parameters
     tool_params = tool_dict[tool_name]["params"]
     if len(params) > len(tool_params):
-        return f"Tool {tool_name} expects {len(tool_params)} parameters, but {len(params)} were provided."
+        return f"Tool {tool_name} expects {len(tool_params)} parameters, but {len(params)} were provided.", False
 
     # then check if the parameters are named correctly
     for key, _ in params.items():
         if key not in tool_params:
-            return f"Tool {tool_name} does not have a parameter named {key}."
+            return f"Tool {tool_name} does not have a parameter named {key}.", False
 
     # if everything is correct, execute the tool (in a try-except block)
     try:
-        return tool_dict[tool_name]["func"](**params)
+        return tool_dict[tool_name]["func"](**params), True
     except Exception as e:
-        return f"Error executing tool {tool_name}: {e}"
+        return f"Error executing tool {tool_name}: {e}", False
 
 
 if __name__ == "__main__":

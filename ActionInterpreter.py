@@ -15,7 +15,7 @@ class ActionInterpreter:
                                   "please ask the user again. If you are confident that you understand the user's " \
                                   "intent, include no other text after the JSON."
 
-        self.TOOL_PROMPT_INTRO = "The following actions are available:"
+        self.TOOL_PROMPT_INTRO = "The following actions are available (use only the tools you have):"
 
         self.system_prompt = self.INSTRUCTION_PROMPT + self.TOOL_PROMPT_INTRO
 
@@ -27,6 +27,10 @@ class ActionInterpreter:
         self.tools = tools
         if tools:
             self.set_tools(tools)
+        else:
+            self.messages = [
+                {"role": "user", "content": self.system_prompt}
+            ]
 
     def set_tools(self, tools):
         self.tools = tools
@@ -46,7 +50,7 @@ class ActionInterpreter:
         return tool_list
 
     def refresh_tool_prompt(self):
-        tools_strings = self.format_tool_prompt(tools)
+        tools_strings = self.format_tool_prompt(self.tools)
         self.TOOL_PROMPT = "\n".join(tools_strings)
         self.system_prompt = self.INSTRUCTION_PROMPT + self.TOOL_PROMPT_INTRO + self.TOOL_PROMPT
         self.reset_messages()
@@ -101,20 +105,22 @@ class ActionInterpreter:
 
         successfully_executed = False
         for action in actions:
-            tool_response = ToolLoader.execute_tool(action, self.tools)
-            # add the tool response to the response content, prefaced by a newline and the action name and colon
+            tool_response, tool_success = ToolLoader.execute_tool(action, self.tools)
+
+            print(f"Action: {action['actionName']}, Response: {tool_response}, Success: {tool_success}")
 
             # on the first successful execution, reset the content to an empty string
-            if successfully_executed is False:
-                content = ""
+            if tool_success:
+                if successfully_executed is False:
+                    content = ""
 
-            content += f"\n{action['actionName']}: {tool_response}"
-            successfully_executed = True
+                content += f"\n{action['actionName']}: {tool_response}"
+                successfully_executed = True
 
         if successfully_executed:
             self.reset_messages()
 
-        return content
+        return content, successfully_executed
 
 
 if __name__ == "__main__":
@@ -122,17 +128,22 @@ if __name__ == "__main__":
 
     agent = ActionInterpreter(tools)
 
-    response = agent.send("find me some moon facts")
+    response, success = agent.send("find me some moon facts")
     print(response)
+    print(success)
 
-    response = agent.send("Search the web for weather in Fredericksburg, VA")
+    response, success = agent.send("Search the web for weather in Fredericksburg, VA")
     print(response)
+    print(success)
 
-    response = agent.send("Save a the following text to a file called 'test.txt': 'Hello, World!'")
+    response, success = agent.send("Save a the following text to a file called 'test.txt': 'Hello, World!'")
     print(response)
+    print(success)
 
-    response = agent.send("What actions can I do?")
+    response, success = agent.send("What actions can I do?")
     print(response)
+    print(success)
 
-    response = agent.send("What files are in the current directory?")
+    response, success = agent.send("What files are in the current directory?")
     print(response)
+    print(success)

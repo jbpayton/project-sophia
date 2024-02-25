@@ -5,6 +5,7 @@ def SaveFile(filename, contents):
     """Writes text to a file"""
     with open(filename, 'w') as file:
         file.write(contents)
+        return "Successfully wrote text to file."
 
 
 def LoadFile(filename):
