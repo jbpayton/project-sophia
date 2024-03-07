@@ -154,11 +154,9 @@ class ToolUsingAgent:
 
 
 if __name__ == "__main__":
-
-
     WEATHER_TEST = False
-    INTERACTIVE_TEST = True
-    ALUCARD_TEST = False
+    INTERACTIVE_TEST = False
+    ALUCARD_TEST = True
 
     if WEATHER_TEST:
         tools = load_tools_from_file("DuckDuckGo.py")
@@ -171,7 +169,7 @@ if __name__ == "__main__":
     if ALUCARD_TEST:
         tools = load_tools_from_files()
         agent = ToolUsingAgent(tools)
-        response, emotion, monologue, actions = agent.send("Can you tell me who Rachel Alucard is (according to the internet)?")
+        response, emotion, monologue, actions = agent.send("Can you find out what Rachel Alucard thinks about bell peppers?")
         print(emotion)
         print(monologue)
         print(response)

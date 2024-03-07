@@ -85,26 +85,12 @@ class ActionInterpreter:
 
         return json_objects, text_without_json
 
-    def send(self, message):
-        self.messages.append({"role": "user", "content": message})
-        response = self.client.chat.completions.create(
-            model="gpt-4-1106-preview",
-            messages=self.messages,
-            temperature=0.0,
-            max_tokens=256,
-            top_p=1,
-            frequency_penalty=0,
-            presence_penalty=0
-        )
-        role = response.choices[0].message.role
-        content = response.choices[0].message.content
-        self.messages.append({"role": role, "content": content})
-
-        actions, content = self.extract_json_objects(content)
-        content = content.strip()
+    def send(self, message, max_retries=3, verbose=False):
+        actions, content = self.inner_send(message, verbose)
 
         successfully_executed = False
         for action in actions:
+            retries = max_retries
             tool_response, tool_success = ToolLoader.execute_tool(action, self.tools)
 
             print(f"Action: {action['actionName']}, Response: {tool_response}, Success: {tool_success}")
@@ -116,11 +102,44 @@ class ActionInterpreter:
 
                 content += f"\n{action['actionName']}: {tool_response}"
                 successfully_executed = True
+            else:
+                while retries > 0:
+                    retries -= 1
+                    print(f"Retrying {action['actionName']}... {retries} retries left.")
+                    tool_response += "\nLets try again."
+                    actions, tool_response = self.inner_send(tool_response, verbose)
+                    tool_response, tool_success = ToolLoader.execute_tool(actions[0], self.tools)
+                    if tool_success:
+                        content += f"\n{action['actionName']}: {tool_response}"
+                        successfully_executed = True
+                        break
 
         if successfully_executed:
             self.reset_messages()
 
         return content, successfully_executed
+
+    def inner_send(self, message, verbose):
+        if verbose:
+            print(f"User: {message}")
+        self.messages.append({"role": "user", "content": message})
+        response = self.client.chat.completions.create(
+            model="gpt-4-1106-preview",
+            messages=self.messages,
+            temperature=0.0,
+            max_tokens=256,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0
+        )
+        if verbose:
+            print(f"{response.choices[0].message.role}: {response.choices[0].message.content}")
+        role = response.choices[0].message.role
+        content = response.choices[0].message.content
+        self.messages.append({"role": role, "content": content})
+        actions, content = self.extract_json_objects(content)
+        content = content.strip()
+        return actions, content
 
 
 if __name__ == "__main__":
@@ -128,22 +147,28 @@ if __name__ == "__main__":
 
     agent = ActionInterpreter(tools)
 
-    response, success = agent.send("find me some moon facts")
+    response, success = agent.send("Search duck duck go for 4 results about bacon", verbose=True)
     print(response)
     print(success)
 
-    response, success = agent.send("Search the web for weather in Fredericksburg, VA")
+    response, success = agent.send("find me some moon facts", verbose=True)
     print(response)
     print(success)
 
-    response, success = agent.send("Save a the following text to a file called 'test.txt': 'Hello, World!'")
+    response, success = agent.send("Search the web for weather in Fredericksburg, VA", verbose=True)
     print(response)
     print(success)
 
-    response, success = agent.send("What actions can I do?")
+'''
+    response, success = agent.send("Save a the following text to a file called 'test.txt': 'Hello, World!'", verbose=True)
     print(response)
     print(success)
 
-    response, success = agent.send("What files are in the current directory?")
+    response, success = agent.send("What actions can I do?", verbose=True)
     print(response)
     print(success)
+
+    response, success = agent.send("What files are in the current directory?", verbose=True)
+    print(response)
+    print(success)
+'''
