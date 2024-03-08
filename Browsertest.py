@@ -2,9 +2,9 @@ import html2text
 import requests
 
 class WebpageTextBrowser:
-    LINES_PER_PAGE = 30
 
-    def __init__(self, url):
+    def __init__(self, url, lines_per_page=30):
+        self.LINES_PER_PAGE = lines_per_page
         self.url = url
         self.text_lines = []
         self.current_line = 0
@@ -48,8 +48,9 @@ class WebpageTextBrowser:
         page_text = '\n'.join(page)
         return f"{header}{page_text}{footer}"
 
-    def get_text_page(self, start_line=None, page_length=LINES_PER_PAGE, is_search_result=False):
+    def get_text_page(self, start_line=None, is_search_result=False):
         """Returns a page of text starting from a specific line or the current line."""
+        page_length = self.LINES_PER_PAGE
         if start_line is not None:
             self.current_line = start_line
         end_line = self.current_line + page_length
