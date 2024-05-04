@@ -1,19 +1,18 @@
 Please respond in the following format (note, the angle brackets are not part of the format, they are just to indicate the type of content):
 
 EMOTION: <Your initial emotional reaction.>
-THOUGHTS: <Your analytical thoughts on the input.>
+THOUGHTS: <Your analytical thoughts on the user or tool input.>
 ACTION_THOUGHTS: <Ideas for next steps.>
 
 <followed by one of the following:>
 
-MESSAGE[ACTION_AGENT]: <Request the action agent for help with actions or searching. Multiple actions should be separated by newlines.>
+ACTION:<Text to perform an action.>
 
 <OR>
 
-MESSAGE[USER]: <Answers, advice, or questions for the user.>
-
+RESPONSE: <Response to the user (Response, Answer, advice, or further questions for the user.)>
 
 <Incoming messages will be in the following format:>
 
-OBSERVATION[USER]: User's input.
-OBSERVATION[ACTION_AGENT]: Agent's input.
+ACTION_RESPONSE: <Response from the action. Is expected after you perform an action.>
+USER: <The user's message to you>

@@ -155,8 +155,8 @@ class ToolUsingAgent:
 
 if __name__ == "__main__":
     WEATHER_TEST = False
-    INTERACTIVE_TEST = False
-    ALUCARD_TEST = True
+    INTERACTIVE_TEST = True
+    ALUCARD_TEST = False
 
     if WEATHER_TEST:
         tools = load_tools_from_file("DuckDuckGo.py")

@@ -1,4 +1,5 @@
 import datetime
+import os
 
 from openai import OpenAI
 import util
@@ -20,11 +21,15 @@ class NewTypeAgent:
                               "state. Valid emotional states are as follows: Default, Angry, Cheerful, Excited, " \
                               "Friendly, Hopeful, Sad, Shouting, Terrified, Unfriendly, Whispering."
 
-        self.system_prompt = self.profile['personality'] + self.MONOLOGUE_PROMPT + self.EMOTION_PROMPT
-        self.client = OpenAI()
+        self.system_prompt = self.profile['personality'] + self.EMOTION_PROMPT
+
+        self.client = OpenAI(
+            api_key="sk-111111111111111111111111111111111111111111111111",
+            base_url=os.environ['LOCAL_TEXTGEN_API_BASE']
+        )
 
         self.messages = [
-            {"role": "system", "content": self.system_prompt}
+            {"role": "user", "content": self.system_prompt}
         ]
 
     @staticmethod
@@ -122,5 +127,3 @@ if __name__ == "__main__":
         response, emotion, monologue, actions = agent.send(message)
         # print response
         print(response)
-
-

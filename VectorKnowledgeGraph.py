@@ -492,7 +492,7 @@ if __name__ == '__main__':
 
     # turn on tests as needed
     visualize_test = False
-    graph_test = False
+    graph_test = True
 
     if visualize_test:
         load_secrets()

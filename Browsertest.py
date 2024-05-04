@@ -1,33 +1,22 @@
-import html2text
-import requests
 
-class WebpageTextBrowser:
-
-    def __init__(self, url, lines_per_page=30):
+class TextBrowser:
+    def __init__(self, text, ref="TextBrowser", lines_per_page=40):
+        self.ref = ref
         self.LINES_PER_PAGE = lines_per_page
-        self.url = url
         self.text_lines = []
         self.current_line = 0
         self.total_lines = 0
         self.search_results = []
         self.current_search_result_index = -1
-        self._fetch_and_prepare_text()
+        self._prepare_text(text)
 
-    def _fetch_and_prepare_text(self):
-        """Fetches the webpage content and prepares the text."""
-        response = requests.get(self.url)
-        html_content = response.text
-
-        h = html2text.HTML2Text()
-        h.ignore_links = False
-        text = h.handle(html_content)
-
+    def _prepare_text(self, text):
         self.text_lines = text.split('\n')
         self.total_lines = len(self.text_lines)
 
     def _construct_page_content(self, page, is_search_result=False):
         """Constructs the page content with header and footer."""
-        header = f"URL: {self.url} - Top of the Browser\n---\n"
+        header = f"Browser for: {self.ref} - Top of the Browser\n---\n"
         footer = "\n---\n"
         if is_search_result:
             footer += f"Search result {self.current_search_result_index + 1} of {len(self.search_results)}"
@@ -37,7 +26,6 @@ class WebpageTextBrowser:
             current_page_number = ((self.current_line + 1) // self.LINES_PER_PAGE)
             if self.current_line == 0:
                 current_page_number = 1
-
 
             total_pages = self.total_lines // self.LINES_PER_PAGE
             if total_pages == 0:
@@ -116,6 +104,7 @@ class WebpageTextBrowser:
 
 
 if __name__ == "__main__":
+    from AgentTools.WebTools import FetchTextFromURL
     browser = WebpageTextBrowser("https://blazblue.fandom.com/wiki/Rachel_Alucard")
     #browser = WebpageTextBrowser("https://www2.latech.edu/~acm/helloworld/HTML.html")
     print(browser.get_text_page())
