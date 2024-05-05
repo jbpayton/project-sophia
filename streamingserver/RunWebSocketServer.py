@@ -33,6 +33,7 @@ import soundfile as sf
 #   1 - audio
 #   2 - avatar action
 #   3 - client message
+#   4 - keepalive message
 
 
 # Global variable to determine the mode of operation
@@ -191,19 +192,20 @@ async def handle_incoming_data(websocket):
 
 # Coroutine for handling outgoing audio data
 async def handle_outgoing_data(websocket):
-    CHUNK_SIZE = 4096  # Size of each audio chunk (in bytes)
+    CHUNK_SIZE = 4096*2  # Size of each audio chunk (in bytes)
     SAMPLE_RATE = 24000  # Sampling rate of the audio (in Hz)
     FRAME_DURATION = CHUNK_SIZE / SAMPLE_RATE  # Duration of each audio chunk (in seconds)
 
     while True:
         if not audio_queue.empty():
+            print("Audio queue size: ", audio_queue.qsize())
             audio_data = audio_queue.get()
             # Split audio_data into smaller chunks
             for i in range(0, len(audio_data), CHUNK_SIZE):
                 # send audio data with the header
                 header = bytearray([1, 0, 0, 0])
                 await websocket.send(header + audio_data[i:i+CHUNK_SIZE])
-                await asyncio.sleep(FRAME_DURATION/32)  # Control the rate of sending
+                await asyncio.sleep(FRAME_DURATION/16)  # Control the rate of sending
         elif not action_queue.empty():
             action = action_queue.get()
             header = bytearray([2, 0, 0, 0])
@@ -214,7 +216,7 @@ async def handle_outgoing_data(websocket):
             await websocket.send(header + message.encode())
         else:
             # Send a small keepalive message when there's no other data
-            header = bytearray([3, 0, 0, 0])
+            header = bytearray([4, 0, 0, 0])
             await websocket.send(header)
             await asyncio.sleep(FRAME_DURATION/4)  # Control the rate of sending
 
@@ -274,6 +276,7 @@ def tts_processor():
             "language": "en"
         }
         api_response = requests.post(api_url, json=payload)
+        print("got response from TTS API")
 
         if api_response.status_code == 200:
             # Get the generated audio data from the response
@@ -294,8 +297,9 @@ def tts_processor():
             audio_bytes = audio_frames.tobytes()
 
             audio_queue.put(audio_bytes)  # Place the TTS audio frames into the outgoing queue
+            print("all frames sent to audio queue")
         else:
-            print(f"TTS API request failed with status code: {response.status_code}")
+            print(f"TTS API request failed with status code: {api_response.status_code}")
 
 # Function to start the TTS processor thread
 def start_tts_processor():
@@ -321,7 +325,7 @@ async def main():
     observation_thread = start_observation_processor()
     #async with websockets.serve(audio_handler, "localhost", 8765)
     #listen on all interfaces
-    async with websockets.serve(audio_handler, None, 8765, ping_timeout=15):
+    async with websockets.serve(audio_handler, None, 8765, ping_timeout=None, ping_interval=None):
         print("Server started. Awaiting connections...")
         await asyncio.Future()  # This will keep the server running indefinitely
     tts_thread.join()  # Wait for the TTS processor thread to complete

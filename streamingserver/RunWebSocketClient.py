@@ -1,11 +1,13 @@
 import asyncio
+import time
+
 import websockets
 import pyaudio
 import json
 
 # Function to handle sending and receiving audio
 async def handle_audio(uri):
-    async with websockets.connect(uri) as websocket:
+    async with websockets.connect(uri, ping_timeout=None, ping_interval=None) as websocket:
         # Set up audio input (microphone)
         p = pyaudio.PyAudio()
         input_stream = p.open(format=pyaudio.paInt16,
@@ -39,27 +41,28 @@ async def handle_audio(uri):
                 # Extract the message type from the header
                 message_type = output_data[0]
 
-                if message_type == 0:  # Text message
-                    message = output_data[4:].decode("utf-8")
-                    print(f"Received text message: {message}")
-                elif message_type == 1:  # Audio data
+                if message_type == 1:  # Audio data
                     audio_data = output_data[4:]
                     # Pause listening during playback
-                    listening = False
+                    if listening:
+                        print("Speaking, pausing listening" + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+                        listening = False
                     # Play received audio data
                     output_stream.write(audio_data)
-
+                elif message_type == 0:  # Text message
+                    message = output_data[4:].decode("utf-8")
+                    print(f"Received text message: {message}")
                 elif message_type == 2:  # Avatar action
                     action = output_data[4:].decode("utf-8")
                     action_data = json.loads(action)
                     print(f"Received avatar action: {action_data}")
                 elif message_type == 3:  # Keepalive message
+                    print(f"Received client message")
+                elif message_type == 4:  # Keepalive message
                     # Resume listening after playback
-                    listening = True
-                    # Ignore the keepalive message
-                    print(f"Received keepalive message")
-
-                    pass
+                    if not listening:
+                        listening = True
+                        print("Resuming listening")
                 else:
                     print(f"Received unknown message type: {message_type}")
 
