@@ -3,6 +3,7 @@ import queue
 import tempfile
 import threading
 import json
+import time
 
 import requests
 import websockets
@@ -44,7 +45,7 @@ from util import load_secrets
 load_secrets("../secrets.json")
 
 TEST_MODE = "--test" in sys.argv
-#TEST_MODE = True
+TEST_MODE = True
 
 # if we are not in test mode, we need to load whisper before any connections are made
 if not TEST_MODE:
@@ -57,24 +58,6 @@ incoming_message_queue = queue.Queue()  # Queue for incoming text messages
 audio_queue = queue.Queue()  # Queue for synthesized audio data
 action_queue = queue.Queue()  # Queue for avatar actions
 client_message_queue = queue.Queue()  # Queue for text to be sent to the client
-
-
-# Function to stream MP3 file audio in test mode
-async def stream_mp3(websocket, mp3_file):
-    stereo_audio = AudioSegment.from_mp3(mp3_file)
-    mono_audio = stereo_audio.set_channels(1)
-    raw_data = mono_audio.raw_data
-    chunk_size = 2048
-
-    try:
-        while True:  # Loop to continuously stream the MP3 file
-            for i in range(0, len(raw_data), chunk_size):
-                # append the header to the chunk
-                header = bytearray([1, 0, 0, 0])
-                await websocket.send(header + raw_data[i:i + chunk_size])
-                # await websocket.send(raw_data[i:i + chunk_size])
-    except websockets.ConnectionClosed:
-        print("Connection for MP3 streaming closed")
 
 # Function to generate a placeholder tone (or silence) for outgoing audio
 def generate_audio_data(duration_seconds=0.1, sample_rate=44100, tone=False):
@@ -122,6 +105,8 @@ async def handle_incoming_data(websocket):
         try:
             while True:
                 data = await websocket.recv()
+                # strip the header from the incoming message
+                data = data[4:]
                 wf.writeframes(data)
         except websockets.ConnectionClosed as e:
             print("Connection for incoming audio closed")
@@ -238,6 +223,12 @@ async def audio_handler(websocket, path):
 
 
 def tts_processor():
+    if TEST_MODE:
+        # do a whole lot of nothing
+        while True:
+            # sleep for a long time
+            time.sleep(1000)
+
     voice_name = agent.profile['voice']
     while True:
         text = text_queue.get()  # Wait for text from the STT process

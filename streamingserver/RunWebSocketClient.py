@@ -4,6 +4,13 @@ import time
 import websockets
 import pyaudio
 import json
+import numpy as np
+import audioop
+
+def is_silence(data, threshold=350):
+    # Calculate the RMS value
+    rms = audioop.rms(data, 2)  # Assuming 16-bit audio (2 bytes per sample)
+    return rms < threshold
 
 # Function to handle sending and receiving audio
 async def handle_audio(uri):
@@ -22,19 +29,52 @@ async def handle_audio(uri):
                                rate=24000,
                                output=True)
 
+        # Define time-based thresholds in seconds
+        SILENCE_DURATION_THRESHOLD = 1.2  # Adjust this value based on your requirements
+        sr = 16000
+
+        # Calculate byte lengths based on time durations
+        silent_frames_threshold = int(SILENCE_DURATION_THRESHOLD * sr / 1024)
+
+        speech_frames = []
+        silent_frames_count = 0
+
         print("Recording and playing back...")
 
         listening = True
+        non_silence_present = False
 
         try:
             while True:
                 if listening:
                     # Read data from microphone
                     input_data = input_stream.read(1024, exception_on_overflow=False)
-                    # Append header to the input data
-                    header = bytearray([1, 0, 0, 0])
-                    await websocket.send(header + input_data)
+                    if is_silence(input_data):
+                        silent_frames_count += 1
+                        speech_frames.append(input_data)
 
+                        # Check for end of speech segment
+                        if silent_frames_count >= silent_frames_threshold and non_silence_present:
+                            # Send accumulated speech frames to the server
+                            header = bytearray([1, 0, 0, 0])
+                            await websocket.send(header + b''.join(speech_frames))
+                            print("Sending speech data" + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+
+                            # Reset buffers and counters
+                            speech_frames = []
+                            silent_frames_count = 0
+                            non_silence_present = False
+                        # Continue accumulating silence if not enough speech yet
+                    else:
+                        # Reset silence duration and accumulate speech
+                        silent_frames_count = 0
+                        if not non_silence_present:
+                            non_silence_present = True
+                            # get rid of the silence at the beginning of the speech
+                            speech_frames = []
+                        speech_frames.append(input_data)
+
+                '''
                 # Receive data from server
                 output_data = await websocket.recv()
 
@@ -65,6 +105,7 @@ async def handle_audio(uri):
                         print("Resuming listening")
                 else:
                     print(f"Received unknown message type: {message_type}")
+                '''
 
         except websockets.ConnectionClosed:
             print("Connection to server closed")
