@@ -1,12 +1,7 @@
 import json
-
 import requests
 import pyaudio
-import io
-import wave
-import numpy as np
 import audioop
-import time
 
 # Constants
 SILENCE_THRESHOLD = 350

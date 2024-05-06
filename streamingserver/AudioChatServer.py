@@ -1,9 +1,8 @@
-from flask import Flask, request, jsonify, send_file, make_response, Response
+from flask import Flask, request, jsonify, Response
 import io
 import numpy as np
 import whisper
 from queue import Queue
-from threading import Thread
 from NewTypeAgent import NewTypeAgent
 import requests
 import os
