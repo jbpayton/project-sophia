@@ -12,11 +12,12 @@ import time
 SILENCE_THRESHOLD = 350
 SILENCE_DURATION_THRESHOLD = 1.2
 SAMPLE_RATE = 16000
-OUTPUT_SAMPLE_RATE = 16000
+OUTPUT_SAMPLE_RATE = 24000
 
 CHUNK_SIZE = 2048
 SILENT_FRAMES_THRESHOLD = int(SILENCE_DURATION_THRESHOLD * SAMPLE_RATE / CHUNK_SIZE)
 AGENT_NAME = 'Sophia'
+USER_NAME = 'Joey'
 
 
 # Function to check if audio data is silence
@@ -36,10 +37,10 @@ def play_audio(audio_data):
 
 
 # Function to send audio to the server
-def send_audio(audio_data, agent_name):
+def send_audio(audio_data, agent_name, user_name):
     url = 'http://localhost:5000/audio'
     files = {'audio': ('audio.wav', audio_data, 'audio/wav')}
-    data = {'agent_name': agent_name}
+    data = {'agent_name': agent_name, 'user_name': user_name}
     response = requests.post(url, files=files, data=data)
 
     if response.status_code == 200:
@@ -58,9 +59,9 @@ def send_audio(audio_data, agent_name):
 
 
 # Function to send text to the server
-def send_text(text, agent_name):
+def send_text(text, agent_name, user_name='User'):
     url = 'http://localhost:5000/text'
-    data = {'text': text, 'agent_name': agent_name}
+    data = {'text': text, 'agent_name': agent_name, 'user_name': user_name}
     response = requests.post(url, json=data)
 
     if response.status_code == 200:
@@ -92,7 +93,7 @@ def main():
                 print("Silence detected. Processing speech...")
                 audio_data = b''.join(speech_frames)
 
-                send_audio(audio_data, AGENT_NAME)  # Send the audio data to the server
+                send_audio(audio_data, AGENT_NAME, USER_NAME)  # Send the audio data to the server
 
                 # resume listening
                 stream.start_stream()
@@ -113,4 +114,5 @@ def main():
 
 
 if __name__ == '__main__':
+
     main()

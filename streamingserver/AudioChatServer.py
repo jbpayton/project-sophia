@@ -10,6 +10,7 @@ import os
 import json
 import tempfile
 import soundfile as sf
+import util
 
 app = Flask(__name__)
 
@@ -23,7 +24,8 @@ agent_dict = {}
 text_queue = Queue()
 audio_queue = Queue()
 
-TEST_MODE = True
+TEST_MODE = False
+
 
 @app.route('/text', methods=['POST'])
 def handle_text():
@@ -53,6 +55,7 @@ def handle_text():
 def handle_audio():
     audio_data = request.files['audio'].read()
     agent_name = request.form['agent_name']
+    user_name = request.form['user_name']
 
     if TEST_MODE:
         # Save the audio data to a temporary WAV file
@@ -99,7 +102,7 @@ def handle_audio():
     text = result["text"]
 
     # Process the text using the NewTypeAgent
-    response, mood, inner_monologue, actions = agent.send(text)
+    response, mood, inner_monologue, actions = agent.send(text, user_name)
 
     # Generate the response audio using the TTS API
     response_audio = generate_response_audio(response, voice_name, mood)
@@ -126,7 +129,7 @@ def handle_audio():
 
 def generate_response_audio(response, speaker_name, mood="neutral"):
     # Check if a mood-specific WAV file exists
-    mood_wav_file = f"{speaker_name}_{mood}.wav"
+    mood_wav_file = f"../xtts-api-server/speakers/{speaker_name}_{mood}.wav"
     if os.path.exists(mood_wav_file):
         speaker_wav = mood_wav_file
     else:
@@ -165,4 +168,5 @@ def generate_response_audio(response, speaker_name, mood="neutral"):
         return None
 
 if __name__ == '__main__':
+    util.load_secrets("../secrets.json")
     app.run()

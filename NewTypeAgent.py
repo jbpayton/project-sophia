@@ -54,21 +54,23 @@ class NewTypeAgent:
                 continue  # Skip invalid JSON
 
         print("JSON Objects: " + str(json_objects))
-        print("Text without JSON: " + text_without_json)
+        #print("Text without JSON: " + text_without_json)
         return json_objects, text_without_json
 
     @staticmethod
-    def prepend_timestamp(text):
+    def prepend_timestamp(text, name):
         # first format the date+timestamp
         timestamp_string = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return f"[{timestamp_string}] {text}"
+        return f"[{timestamp_string}] {name}:{text}"
 
-    def send(self, message):
+    def send(self, message, user_name="User"):
         if self.observation_updated:
             self.observation_updated = False
             self.messages.append({"role": "system", "content": self.observation})
 
-        message = self.prepend_timestamp(message)
+        message = self.prepend_timestamp(message, user_name)
+
+        print(message)
 
         self.messages.append({"role": "user", "content": message})
         response = self.client.chat.completions.create(
@@ -82,30 +84,53 @@ class NewTypeAgent:
         )
         role = response.choices[0].message.role
         content = response.choices[0].message.content
-        self.messages.append({"role": role, "content": content})
 
-        print("Content, before Command Removal:" + content)
+        #print("Raw Content from LLM:" + content)
+
+        # get rid of the timestamp, if present, with regex
+        content = re.sub(r'\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]', '', content)
+
+        #print("Content after timestamp removal:" + content)
+
+        # remove the contents of self.name + colon from the response, if present, with regex
+        content = re.sub(rf'{self.name}:', '', content)
+
+        #print("Content after name removal:" + content)
+
+        # if we find {user_name}: anywhere in the response, remove it and everything after it
+        if user_name + ":" in content:
+            content = content.split(user_name + ":")[0]
+
+        stored_content = content
+        stored_content = self.prepend_timestamp(stored_content, self.name)
+        print(stored_content)
+        self.messages.append({"role": role, "content": stored_content})
+
+        #print("Content, before Command Removal:" + content)
 
         actions, content = self.extract_json_objects(content)
         content = content.strip()
 
-        print("Content, after Command Removal:" + content)
+        #print("Content, after Command Removal:" + content)
 
         # example content, parse content into internal monologue, emotion, and the rest:
         # '{Curiosity piqued, time to clarify} (Friendly) FIRE as in Finance term, or literal fire?'
-        if "{" in content:
-            monologue = content.split("}")[0][1:]
-            content = content.split("}")[1]
+        # let use regex and let's remove it from the content
+        monologue = None
+        for match in re.finditer(r'\{.*?\}', content):
+            monologue = match.group(0)[1:-1]
+            content = content.replace(match.group(0), "")
             print("Monologue:" + monologue)
-        else:
-            monologue = None
+            break
 
-        if "(" in content:
-            emotion = content.split(")")[0].split("(")[1]
-            content = content.split(")")[1]
+        #find the first instance of an emotion, which is the first word we find in parenthesis.
+        # We cannot rely on it being the first character, so let use regex and let's remove it from the content
+        emotion = None
+        for match in re.finditer(r'\(.*?\)', content):
+            emotion = match.group(0)[1:-1]
+            content = content.replace(match.group(0), "")
             print("Emotion:" + emotion)
-        else:
-            emotion = None
+            break
 
         content = content.strip()
         print("Content:" + content)
@@ -113,7 +138,7 @@ class NewTypeAgent:
         return content, emotion, monologue, actions
 
     def accept_observation(self, observation):
-        self.observation = self.prepend_timestamp(observation)
+        self.observation = self.prepend_timestamp(observation, "Observation")
         self.observation_updated = True
 
 
