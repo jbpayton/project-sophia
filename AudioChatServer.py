@@ -182,5 +182,5 @@ def generate_response_audio(response, speaker_name, mood="neutral"):
         return None
 
 if __name__ == '__main__':
-    util.load_secrets("../secrets.json")
+    util.load_secrets("secrets.json")
     app.run()

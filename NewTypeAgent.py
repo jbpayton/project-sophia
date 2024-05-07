@@ -6,12 +6,16 @@ import util
 import json
 import re
 
+from ConversationLogger import ConversationFileLogger
+
 
 class NewTypeAgent:
     def __init__(self, name):
         self.name = name
         # load profile
         self.profile = util.load_profile(name)
+
+        self.conversation_logger = ConversationFileLogger(f"{self.name}_logs")
 
         self.observation = ""
         self.observation_updated = False
@@ -31,6 +35,8 @@ class NewTypeAgent:
         self.messages = [
             {"role": "user", "content": self.system_prompt}
         ]
+
+        self.conversation_logger.append_last_lines_to_messages(200, self.messages)
 
     @staticmethod
     def extract_json_objects(text):
@@ -73,6 +79,8 @@ class NewTypeAgent:
         print(message)
 
         self.messages.append({"role": "user", "content": message})
+        self.conversation_logger.log_message("user", message)
+
         response = self.client.chat.completions.create(
             model="gpt-4-1106-preview",
             messages=self.messages,
@@ -105,6 +113,7 @@ class NewTypeAgent:
         stored_content = self.prepend_timestamp(stored_content, self.name)
         print(stored_content)
         self.messages.append({"role": role, "content": stored_content})
+        self.conversation_logger.log_message(role, stored_content)
 
         #print("Content, before Command Removal:" + content)
 
