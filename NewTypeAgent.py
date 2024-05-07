@@ -132,6 +132,11 @@ class NewTypeAgent:
             print("Emotion:" + emotion)
             break
 
+        # now get rid of the rest of the emotions in the content
+        for match in re.finditer(r'\(.*?\)', content):
+            content = content.replace(match.group(0), "")
+
+
         content = content.strip()
         print("Content:" + content)
 

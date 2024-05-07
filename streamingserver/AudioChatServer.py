@@ -30,15 +30,20 @@ TEST_MODE = False
 def handle_text():
     data = request.get_json()
     text = data['text']
-    agent_name = request.form['agent_name']
+    agent_name = data['agent_name']
+    user_name = data['user_name']
 
     if agent_name not in agent_dict:
         agent_dict[agent_name] = NewTypeAgent(agent_name)
 
     agent = agent_dict[agent_name]
+    voice_name = agent.profile['voice']
 
     # Process the text using the NewTypeAgent
-    response, mood, inner_monologue, actions = agent.send(text)
+    response, mood, inner_monologue, actions = agent.send(text, user_name)
+
+    # Generate the response audio using the TTS API
+    response_audio = generate_response_audio(response, voice_name, mood)
 
     # Create a JSON object to send back to the client
     response_data = {
@@ -48,7 +53,17 @@ def handle_text():
         'actions': actions
     }
 
-    return jsonify(response_data)
+    # Create a file-like object from the response audio data
+    audio_io = io.BytesIO(response_audio)
+
+    # Create a response object with the audio data
+    response = Response(audio_io.getvalue(), mimetype='audio/wav')
+    response.headers.set('Content-Disposition', 'attachment', filename='response.wav')
+
+    # Attach the JSON data to the response headers
+    response.headers['X-JSON'] = json.dumps(response_data)
+
+    return response
 
 @app.route('/audio', methods=['POST'])
 def handle_audio():
