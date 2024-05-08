@@ -32,6 +32,8 @@ def handle_text():
     text = data['text']
     agent_name = data['agent_name']
     user_name = data['user_name']
+    # if data contains the property 'sound_response', the server should return an audio response
+    audio_response = 'audio_response' in data
 
     if agent_name not in agent_dict:
         agent_dict[agent_name] = NewTypeAgent(agent_name)
@@ -43,6 +45,17 @@ def handle_text():
     response, mood, inner_monologue, actions = agent.send(text, user_name)
 
     # Generate the response audio using the TTS API
+    if not audio_response:
+        # Create a JSON object to send back to the client (but it must be in the response headers)
+        response_data = {
+            'response': response,
+            'mood': mood,
+            'inner_monologue': inner_monologue,
+            'actions': actions
+        }
+
+        return jsonify(response_data)
+
     response_audio = generate_response_audio(response, voice_name, mood)
 
     # Create a JSON object to send back to the client

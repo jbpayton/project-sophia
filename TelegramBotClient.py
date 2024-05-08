@@ -1,28 +1,29 @@
+import configparser
 import os
 import telebot
 import util
-from Agents import get_avatar_agent
+from AudioChatClient import send_text
+import io
+from pydub import AudioSegment
+
 
 util.load_secrets()
+
+# Load settings from configuration file
+config = configparser.ConfigParser()
+config.read('config.ini')
+
+if 'Settings' in config:
+    SERVER_URL = config['Settings'].get('ServerAddress', 'http://localhost:5000')
+    AGENT_NAME = config['Settings'].get('AgentName', 'Sophia')
+else:
+    SERVER_URL = 'http://localhost:5000'
+    AGENT_NAME = 'Sophia'
+
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 TELEGRAM_CHAT_ID = int(os.environ.get('TELEGRAM_CHAT_ID'))
 
 bot = telebot.TeleBot(BOT_TOKEN)
-
-# read profile name and input/output audio device from a config file
-# if not specified, use the default values
-config = util.load_config_file()
-
-# if the config file is not found, (avatar not found in profile) create a new one
-if 'Avatar' not in config:
-    config = util.create_config_file()
-
-# initialize agent
-profile_name = config['Avatar']['profile_name']
-
-profile = util.load_profile(profile_name)
-
-avatar = get_avatar_agent(profile, telegram_bot=bot)
 
 
 class IsAllowedUser(telebot.custom_filters.SimpleCustomFilter):
@@ -40,30 +41,34 @@ bot.add_custom_filter(IsAllowedUser())
 
 @bot.message_handler(commands=['start', 'hello'], is_allowed_user=True)
 def send_welcome(message):
-    avatar.receive(message.from_user.first_name, "Hello!")
-    avatar_response = avatar.send()
-    bot.send_message(message.chat.id, avatar_response)
+    response, audio = send_text("Hello!", SERVER_URL, AGENT_NAME, "User", audio_response=False)
+    response_text = response['response']
+    bot.send_message(message.chat.id, response_text)
 
 
 @bot.message_handler(func=lambda msg: True, is_allowed_user=True)
 def echo_all(message):
-    avatar.receive(message.from_user.first_name, message.text)
-    avatar.set_chat_id(message.chat.id)
+    bot.send_chat_action(chat_id=message.chat.id, action="typing")
+    response, audio_data = send_text(message.text, SERVER_URL, AGENT_NAME,
+                                     message.from_user.first_name, audio_response=True)
+    response_text = response['response']
 
-    while True:
-        bot.send_chat_action(chat_id=message.chat.id, action="typing")
-        avatar_response = avatar.send()
-        bot.send_message(message.chat.id, avatar_response)
-        if avatar.has_picture_to_show:
-            bot.send_photo(message.chat.id, photo=open(avatar.image_to_show, 'rb'))
-            avatar.has_picture_to_show = False
-            avatar.needs_to_think_more = False
-            break
-        if not avatar.needs_to_think_more:
-            break
-        bot.send_chat_action(chat_id=message.chat.id, action="typing")
+    # Convert audio data to AudioSegment
+    audio_segment = AudioSegment(
+        data=audio_data,
+        sample_width=2,  # 16-bit samples
+        frame_rate=24000,  # 24000 sample rate
+        channels=1  # Mono
+    )
 
+    # Export audio as MP3
+    mp3_bytes = io.BytesIO()
+    audio_segment.export(mp3_bytes, format="mp3")
+    mp3_bytes.seek(0)
 
+    # Send the text message and audio file
+    bot.send_message(message.chat.id, response_text)
+    bot.send_audio(message.chat.id, mp3_bytes)
 
 
 print("Bot is running...")

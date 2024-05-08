@@ -22,8 +22,7 @@ class NewTypeAgent:
 
         self.MONOLOGUE_PROMPT = "Before everything you say, include internal monologue in curly brackets."
         self.EMOTION_PROMPT = "Express your emotions by leading a sentence with parenthesis with your emotional " \
-                              "state. Valid emotional states are as follows: Default, Angry, Cheerful, Excited, " \
-                              "Friendly, Hopeful, Sad, Shouting, Terrified, Unfriendly, Whispering."
+                              "state."
 
         self.system_prompt = self.profile['personality'] + self.EMOTION_PROMPT
 
@@ -94,6 +93,12 @@ class NewTypeAgent:
         content = response.choices[0].message.content
 
         #print("Raw Content from LLM:" + content)
+
+        prompt_token_count = response.usage.prompt_tokens
+        print(f"Prompt token count: {prompt_token_count}")
+
+        total_token_count = response.usage.total_tokens
+        print(f"Total token count: {total_token_count}")
 
         # get rid of the timestamp, if present, with regex
         content = re.sub(r'\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]', '', content)

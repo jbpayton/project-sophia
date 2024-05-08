@@ -140,7 +140,9 @@ def send_text_message():
 
     text = text_entry.get()
     if text:
-        send_text(text, AGENT_NAME, USER_NAME)
+        response, audio = send_text(text, SERVER_URL, AGENT_NAME, USER_NAME, audio_response=True)
+        log_text.insert(tk.END, f"{AGENT_NAME}: {response}\n")
+        play_audio(audio)
         text_entry.delete(0, tk.END)
 
 send_button = ttk.Button(window, text="Send", command=send_text_message)
@@ -256,27 +258,33 @@ def send_audio(audio_data, agent_name, user_name):
 
 
 # Function to send text to the server
-def send_text(text, agent_name, user_name='User'):
-    global SERVER_URL
-    url = f"{SERVER_URL}/text"
+def send_text(text, server_url, agent_name, user_name='User', audio_response=False):
+    url = f"{server_url}/text"
     data = {'text': text, 'agent_name': agent_name, 'user_name': user_name}
+    if audio_response:
+        data['audio_response'] = True
+
     response = requests.post(url, json=data)
 
     if response.status_code == 200:
         # Get the response audio and JSON data
-        response_audio = response.content
+        response_content = response.content
+
+        if not audio_response:
+            # Play the response audio
+            response_json = json.loads(response_content)
+            # Print the response JSON data
+            print(response_json)
+            return response_json, None
+
         # Get the response JSON data from the response headers
         response_json = json.loads(response.headers.get('X-JSON'))
 
-        # Play the response audio
-        play_audio(response_audio)
-
         # Print the response JSON data
-        log_text.insert(tk.END, f"Response: {response_json}\n")
         print(response_json)
+        return response_json, response_content
     else:
-        log_text.insert(tk.END, f"Request failed with status code: {response.status_code}\n")
-        print(f"Request failed with status code: {response.status_code}")
+        return f"Request failed with status code: {response.status_code}"
 
 # Main function
 def audio_loop():
