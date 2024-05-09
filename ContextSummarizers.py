@@ -61,6 +61,46 @@ def summarize_messages_verbose(client, messages, start_index, end_index):
 
     return summary
 
+
+def summarize_messages_tuples(client, messages, start_index, end_index):
+    # Extract the specified range of messages using slice notation
+
+    verbose_summary = summarize_messages_verbose(client, messages, start_index, end_index)
+
+    # Prepare the prompt for summarization
+    summary_prompt = '''
+    Extract factual information from the provided text as (topic, subject, relationship, object, source) tuples. Follow these guidelines:
+    1. Focus on fundamental relationships between entities, ignoring conversational elements.
+    2. Ensure that each tuple is a complete thought and doesn't require additional context.
+    3. Topic should be a broad category that encompasses the subject. The topic of the conversation containing the subject.
+    5. Choose accurate relationship to convey the core meaning.
+    6. Keep words separate; don't combine them.
+    8. Make sure the source is the speaker's name or a referenced source.
+    Format the output as JSON: {{ "tuples": [{{"topic": "topic", "subject": "entity 1", "relationship": "relationship", "object": "entity 2" , "source": "speaker name"}}, ...] }}
+    
+    :\n\n'''
+
+    prompt = summary_prompt + verbose_summary
+
+    prompt += "\nTuples:"
+
+    # Send the summarization prompt to the OpenAI API
+    response = client.chat.completions.create(
+        model="gpt-4-1106-preview",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1,
+        max_tokens=750,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0
+    )
+
+    # Extract the summary from the API response
+    summary = response.choices[0].message.content.strip()
+
+    return summary
+
+
 if __name__ == "__main__":
     # Test the message summarization functions
     from util import load_secrets
@@ -88,3 +128,9 @@ if __name__ == "__main__":
     detailed_summary = summarize_messages_verbose(client, messages, start_index, end_index)
     print("\nDetailed Summary:")
     print(detailed_summary)
+
+    triples = summarize_messages_tuples(client, messages, -30, -1)
+    print("\nExtracted Tuples:")
+    print(triples)
+
+
