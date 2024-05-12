@@ -64,9 +64,8 @@ class NewTypeAgent:
 
     @staticmethod
     def prepend_timestamp(text, name):
-        # first format the date+timestamp
         timestamp_string = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return f"[{timestamp_string}] {name}:{text}"
+        return f"[{timestamp_string}] {name}:{text.strip()}"
 
     def send(self, message, user_name="User"):
         if self.observation_updated:
