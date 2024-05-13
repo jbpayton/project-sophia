@@ -237,7 +237,7 @@ def play_audio(audio_data):
 def send_audio(audio_data, agent_name, user_name):
     url = f"{SERVER_URL}/audio"
     files = {'audio': ('audio.wav', audio_data, 'audio/wav')}
-    data = {'agent_name': agent_name, 'user_name': user_name}
+    data = {'agent_name': agent_name, 'sender': user_name}
     response = requests.post(url, files=files, data=data)
 
     if response.status_code == 200:
@@ -260,7 +260,7 @@ def send_audio(audio_data, agent_name, user_name):
 # Function to send text to the server
 def send_text(text, server_url, agent_name, user_name='User', audio_response=False):
     url = f"{server_url}/text"
-    data = {'text': text, 'agent_name': agent_name, 'user_name': user_name}
+    data = {'text': text, 'agent_name': agent_name, 'sender': user_name}
     if audio_response:
         data['audio_response'] = True
 

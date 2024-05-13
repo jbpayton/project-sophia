@@ -1,53 +1,23 @@
+import sys
+
 from flask import Flask, request, jsonify, Response
 import io
 import numpy as np
 import whisper
-from queue import Queue
-from NewTypeAgent import NewTypeAgent
 import requests
 import os
 import json
 import tempfile
 import soundfile as sf
 import util
-import re
+from AgentManager import AgentManager
 
 app = Flask(__name__)
 
 # Load the Whisper model
 whisper_model = whisper.load_model('base')
 
-# Initialize the NewTypeAgent
-agent_dict = {}
-
-# Create queues for text and audio
-text_queue = Queue()
-audio_queue = Queue()
-
 TEST_MODE = False
-
-def remove_emojis(text):
-    emoji_pattern = re.compile("["
-                               u"\U0001F600-\U0001F64F"  # emoticons
-                               u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-                               u"\U0001F680-\U0001F6FF"  # transport & map symbols
-                               u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-                               u"\U00002500-\U00002BEF"  # chinese char
-                               u"\U00002702-\U000027B0"
-                               u"\U00002702-\U000027B0"
-                               u"\U000024C2-\U0001F251"
-                               u"\U0001f926-\U0001f937"
-                               u"\U00010000-\U0010ffff"
-                               u"\u2640-\u2642"
-                               u"\u2600-\u2B55"
-                               u"\u200d"
-                               u"\u23cf"
-                               u"\u23e9"
-                               u"\u231a"
-                               u"\ufe0f"  # dingbats
-                               u"\u3030"
-                               "]+", flags=re.UNICODE)
-    return emoji_pattern.sub(r'', text)
 
 
 @app.route('/text', methods=['POST'])
@@ -55,22 +25,23 @@ def handle_text():
     data = request.get_json()
     text = data['text']
     agent_name = data['agent_name']
-    user_name = data['user_name']
+    user_name = data['sender']
     # if data contains the property 'sound_response', the server should return an audio response
     audio_response = 'audio_response' in data
 
-    if agent_name not in agent_dict:
-        agent_dict[agent_name] = NewTypeAgent(agent_name)
+    if not AgentManager.does_agent_exist(agent_name):
+        return jsonify({'error': 'Agent does not exist'})
 
-    agent = agent_dict[agent_name]
-    voice_name = agent.profile['voice']
+    # Process the text using the AIAgent
+    message = AgentManager.send_to_agent(agent_name, text, user_name)
 
-    # Process the text using the NewTypeAgent
-    response, mood, inner_monologue, actions = agent.send(text, user_name)
+    return formulate_response(agent_name, audio_response, message)
 
+
+def formulate_response(agent_name, audio_response, message):
+    response, mood, inner_monologue, actions = message
     # Strip emojis from the response text
-    response = remove_emojis(response)
-
+    response = util.remove_emojis(response)
     # Generate the response audio using the TTS API
     if not audio_response:
         # Create a JSON object to send back to the client (but it must be in the response headers)
@@ -82,9 +53,7 @@ def handle_text():
         }
 
         return jsonify(response_data)
-
-    response_audio = generate_response_audio(response, voice_name, mood)
-
+    response_audio = generate_response_audio(response, AgentManager.get_agent_voice(agent_name), mood)
     # Create a JSON object to send back to the client
     response_data = {
         'response': response,
@@ -92,24 +61,21 @@ def handle_text():
         'inner_monologue': inner_monologue,
         'actions': actions
     }
-
     # Create a file-like object from the response audio data
     audio_io = io.BytesIO(response_audio)
-
     # Create a response object with the audio data
-    response = Response(audio_io.getvalue(), mimetype='audio/wav')
-    response.headers.set('Content-Disposition', 'attachment', filename='response.wav')
-
+    http_response = Response(audio_io.getvalue(), mimetype='audio/wav')
+    http_response.headers.set('Content-Disposition', 'attachment', filename='response.wav')
     # Attach the JSON data to the response headers
-    response.headers['X-JSON'] = json.dumps(response_data)
+    http_response.headers['X-JSON'] = json.dumps(response_data)
+    return http_response
 
-    return response
 
 @app.route('/audio', methods=['POST'])
 def handle_audio():
     audio_data = request.files['audio'].read()
     agent_name = request.form['agent_name']
-    user_name = request.form['user_name']
+    user_name = request.form['sender']
 
     if TEST_MODE:
         # Save the audio data to a temporary WAV file
@@ -140,13 +106,9 @@ def handle_audio():
 
         return response
 
-
     # check if the agent is already initialized
-    if agent_name not in agent_dict:
-        agent_dict[agent_name] = NewTypeAgent(agent_name)
-
-    agent = agent_dict[agent_name]
-    voice_name = agent.profile['voice']
+    if not AgentManager.does_agent_exist(agent_name):
+        return jsonify({'error': 'Agent does not exist'})
 
     # Convert the audio data to a numpy array
     audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
@@ -155,14 +117,14 @@ def handle_audio():
     result = whisper_model.transcribe(audio_np)
     text = result["text"]
 
-    # Process the text using the NewTypeAgent
-    response, mood, inner_monologue, actions = agent.send(text, user_name)
+    # Process the text using the AIAgent
+    response, mood, inner_monologue, actions = AgentManager.send_to_agent(agent_name, text, user_name)
 
     # Strip emojis from the response text
-    response = remove_emojis(response)
+    response = util.remove_emojis(response)
 
     # Generate the response audio using the TTS API
-    response_audio = generate_response_audio(response, voice_name, mood)
+    response_audio = generate_response_audio(response, AgentManager.get_agent_voice(agent_name), mood)
 
     # Create a JSON object to send back to the client
     response_data = {
@@ -183,6 +145,27 @@ def handle_audio():
     response.headers['X-JSON'] = json.dumps(response_data)
 
     return response
+
+
+@app.route('/getqueued', methods=['POST'])
+def get_queued():
+    data = request.get_json()
+    agent_name = data['agent_name']
+    # if data contains the property 'sound_response', the server should return an audio response
+    audio_response = 'audio_response' in data
+
+    if not AgentManager.does_agent_exist(agent_name):
+        return jsonify({'error': 'Agent does not exist'})
+
+    queued = AgentManager.get_queued_message(agent_name)
+
+    if queued is None:
+        return jsonify({'information': 'No queued message'})
+
+    sender_agent, message = queued
+
+    return formulate_response(sender_agent, audio_response, message)
+
 
 def generate_response_audio(response, speaker_name, mood="neutral"):
     # Check if a mood-specific WAV file exists
@@ -224,6 +207,15 @@ def generate_response_audio(response, speaker_name, mood="neutral"):
         print(f"TTS API request failed with status code: {api_response.status_code}")
         return None
 
+
 if __name__ == '__main__':
+    # handle a single parameter for the port number, 5000 is the default
+    if len(sys.argv) > 1:
+        print(f"Port number provided: {sys.argv[1]}")
+        port = int(sys.argv[1])
+    else:
+        print("No port number provided, defaulting to 5000")
+        port = 5000
+
     util.load_secrets("secrets.json")
-    app.run()
+    app.run(host='0.0.0.0', port=port)

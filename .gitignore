@@ -160,3 +160,6 @@ cython_debug/
 .idea/
 /secrets.json
 /config.ini
+/profiles/nova.json
+/*_logs/
+/voices/

@@ -41,7 +41,7 @@ def is_silence(data, threshold=SILENCE_THRESHOLD):
 # Function to send text to the server
 def send_text(text, server_url, agent_name, user_name='User', audio_response=False):
     url = f"{server_url}/text"
-    data = {'text': text, 'agent_name': agent_name, 'user_name': user_name}
+    data = {'text': text, 'agent_name': agent_name, 'sender': user_name}
     if audio_response:
         data['audio_response'] = True
 
