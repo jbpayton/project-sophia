@@ -191,29 +191,40 @@ class AIAgent:
         from AgentManager import AgentManager
         AgentManager.add_human_agent(sender)
 
-        message = self.prepend_timestamp(message, sender, self.name)
+        origin = sender
+        message = self.prepend_timestamp(message, origin, self.name)
         print(message)
         self.messages.append({"role": "user", "content": message})
         self.conversation_logger.log_message("user", message)
 
-        content, emotion, monologue, actions, parsed_target = self.inner_send(sender)
-
-        if parsed_target is not sender:
-            # if the message from the AI is not intended for the one making the request, send it to the intended target
-            print(f"Sending to {parsed_target}")
-            agent_response = AgentManager.send_to_agent(parsed_target, content, self.name)
-
-        next_speaker = self.who_should_be_the_next_speaker()
-
-        while next_speaker == self.name:
-            print("AI should be the next speaker")
-            content, emotion, monologue, actions, parsed_target = self.inner_send(parsed_target)
+        while True:
+            content, emotion, monologue, actions, parsed_target = self.inner_send(sender)
 
             if parsed_target != sender:
                 print(f"Sending to {parsed_target}")
                 agent_response = AgentManager.send_to_agent(parsed_target, content, self.name)
+                content, emotion, monologue, actions = agent_response
+                origin = parsed_target
+
+                # build a message string from the emotion and content
+                message = content
+                if emotion is not None:
+                    message = f"({emotion}) {message}"
+
+                message = self.prepend_timestamp(message, origin, self.name)
+                print(message)
+                self.messages.append({"role": "user", "content": message})
+                self.conversation_logger.log_message("user", message)
+
+                print(f"Message: {message}")
+                continue
 
             next_speaker = self.who_should_be_the_next_speaker()
+            print(f"Next speaker: {next_speaker}")
+
+            if next_speaker != self.name:
+                break
+            print("AI should be the next speaker")
 
         return content, emotion, monologue, actions
 
