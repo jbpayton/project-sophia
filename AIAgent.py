@@ -8,6 +8,7 @@ import re
 
 from ConversationLogger import ConversationFileLogger
 
+
 class AIAgent:
     def __init__(self, name):
         self.name = name
@@ -24,6 +25,9 @@ class AIAgent:
                                         "the speaker's name followed by '->' and the target's name. For example, " \
                                         "'Alice->Bob: (Happy) Hello!'" \
                                         "Remember, only the intended recipient can hear your messages."
+
+        # replace Alice with the agent's name
+        self.SPEAKER_TARGETING_PROMPT = self.SPEAKER_TARGETING_PROMPT.replace("Alice", self.name)
 
         self.system_prompt = self.profile['personality'] + self.EMOTION_PROMPT + self.SPEAKER_TARGETING_PROMPT
 
@@ -89,12 +93,16 @@ class AIAgent:
 
         return speaker, target, message
 
-    def who_should_be_the_next_speaker(self, message_count=5):
+    def who_should_be_the_next_speaker(self, message_count=10):
         # Prepare the context from the last messages
         context = " ".join([msg["content"] for msg in self.messages[-message_count:]])
 
         # Create a prompt for the LLM to determine the next speaker
-        prompt = f"Based on the following conversation, who should be the next speaker? Provide only the name or identifier of the next speaker without any additional text.\n\n{context}"
+        prompt = f"Based on the following conversation, who should be the next speaker? If the conversation should be " \
+                 f"over (that is, has come to a natural close), reply with 'no one'. " \
+                 f"Provide only the name or identifier of " \
+                 f"the next speaker without any " \
+                 f"additional text.\n\n{context} "
 
         # Use the LLM to generate a suggestion
         response = self.client.chat.completions.create(
@@ -190,6 +198,7 @@ class AIAgent:
         # if is isn't in the agent manager, attempt to add it as a human agent
         from AgentManager import AgentManager
         AgentManager.add_human_agent(sender)
+        original_sender = sender
 
         origin = sender
         message = self.prepend_timestamp(message, origin, self.name)
@@ -202,7 +211,10 @@ class AIAgent:
 
             if parsed_target != sender:
                 print(f"Sending to {parsed_target}")
-                agent_response = AgentManager.send_to_agent(parsed_target, content, self.name)
+                message = content
+                if emotion is not None:
+                    message = f"({emotion}) {message}"
+                agent_response = AgentManager.send_to_agent(parsed_target, message, self.name)
                 content, emotion, monologue, actions = agent_response
                 origin = parsed_target
 
@@ -217,14 +229,22 @@ class AIAgent:
                 self.conversation_logger.log_message("user", message)
 
                 print(f"Message: {message}")
+
+                next_speaker = self.who_should_be_the_next_speaker()
+                print(f"Next speaker: {next_speaker}")
+
+                if next_speaker == "no one" and AgentManager.is_human(original_sender):
+                    print("Direct the conversation to respond back to the user")
+                    # add a user message directing the conversation to respond back to the user
+                    message = f"The next message should be from {self.name} to {original_sender}"
+                    message = self.prepend_timestamp(message, self.name, original_sender)
+                    print(message)
+                    self.messages.append({"role": "user", "content": message})
+                    # do not log this message
+                    continue
                 continue
-
-            next_speaker = self.who_should_be_the_next_speaker()
-            print(f"Next speaker: {next_speaker}")
-
-            if next_speaker != self.name:
+            else:
                 break
-            print("AI should be the next speaker")
 
         return content, emotion, monologue, actions
 

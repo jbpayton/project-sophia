@@ -70,6 +70,14 @@ class AgentManager:
         return None
 
     @staticmethod
+    def is_human(agent_name):
+        agent = AgentManager.get_instance().get_agent_if_exists(agent_name)
+        if agent is not None:
+            return agent.agent_type == "Human"
+
+        return False
+
+    @staticmethod
     def messages_in_queue(agent_name):
         agent = AgentManager.get_instance().get_agent_if_exists(agent_name)
         if agent is not None:
