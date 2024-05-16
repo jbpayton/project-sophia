@@ -1,5 +1,6 @@
 import json
 import re
+import shutil
 import time
 from functools import reduce
 import faiss
@@ -12,10 +13,9 @@ from tinydb import TinyDB, Query
 import numpy as np
 
 from util import load_secrets
-
-from langchain.chat_models import ChatOpenAI
 from sentence_transformers import SentenceTransformer
-from langchain.schema import SystemMessage, HumanMessage
+from openai import OpenAI
+from ContextSummarizers import summarize_messages_tuples
 
 # this is used in place of an alternate map function, allowing for the specification of alternative map functions
 class IdentityMap:
@@ -27,12 +27,12 @@ class VectorKnowledgeGraph:
         if chat_llm is None:
             # this may have been loaded earlier / somewhere else, but we need to make sure it's loaded before we use it
 
-            self.chat_llm = ChatOpenAI(
-                model_name='gpt-3.5-turbo-16k',
-                temperature=0.0
+            self.client = OpenAI(
+                api_key="sk-111111111111111111111111111111111111111111111111",
+                base_url=os.environ['LOCAL_TEXTGEN_API_BASE']
             )
         else:
-            self.chat_llm = chat_llm
+            self.client = chat_llm
 
         if embedding_model is None:
             self.embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
@@ -164,31 +164,8 @@ class VectorKnowledgeGraph:
 
     def _extract_triples(self, input_text):
         triples_list = []
-        build_topic_graphs_prompt = f"""
-        You are tasked with extracting factual information from the text provided in the form of (subject, predicate, 
-        object) triples. Adhere to the following guidelines to ensure accuracy and granularity:
-        1. Extract fundamental relationships, ignoring conversational fillers, greetings, and sign-offs.
-        2. Decompose complex triples into simpler, more atomic triples. Each triple should represent a single, clear 
-        relationship or attribute.
-        3. Make the object of each triple as singular or atomic as possible.
-        4. Use a consistent verb form for predicates, preferably base form (e.g., "love" instead of "loves", "work" 
-        instead of "working").
-        5. Capture specific relationships and attributes rather than generic conversational phrases.
-        6. Choose verbs that accurately convey the core meaning of the action or relationship. For instance, use 'cries' 
-        instead of 'sheds a tear'.
-        7. Do not smush multiple words into one. For example, "wants to learn about" should not be "wantsToLearnAbout".
-        8. Make items in triples as compact as possible without losing meaning.
-        9. Do all of the above from a summarization of the text, not from the text itself.
-        Format the output as JSON like this: 
-        {{ "triples": [{{"subject": "entity 1", "predicate": "predicate", "object": "entity 2"}}, ...] }}
-        """
 
-        message = self.chat_llm(
-            [
-                SystemMessage(role="TripleExtractor", content=build_topic_graphs_prompt),
-                HumanMessage(content=input_text),
-            ]
-        )
+        tuples_output = summarize_messages_tuples(self.client, input_text)
 
         # print("Got message: " + message.content)
 
@@ -198,35 +175,51 @@ class VectorKnowledgeGraph:
             return json_string
 
         # Parse the message.content and add to the graph
-        data = json.loads(clean_json(message.content))
-        for triple in data['triples']:
+        data = json.loads(clean_json(tuples_output))
+        for triple in data:
             try:
                 subject = triple['subject']
-                predicate = triple['predicate']
+                relationship = triple['relationship']
                 obj = triple['object']
             except KeyError:
-                print("Error: Triple missing subject, predicate, or object")
+                print("Error: Triple missing subject, subject, or object")
                 continue
-            triples_list.append((subject, predicate, obj))
+            triples_list.append((subject, relationship, obj))
 
         return triples_list
 
+
     def summarize_graph(self, triples_list):
+        # Convert the list of triples to a string
         input_text = str(triples_list)
-        summarize_triples_prompt = f"""
+
+        # Prepare the prompt for summarization
+        summarize_triples_prompt = """
         You are tasked with very briefly summarizing the triples provided in the text provided. 
         Piece together the triples into a brief summary of the text while retaining as much information as possible.
         Also, summarize / cite any source information or other metadata.
         """
 
-        message = self.chat_llm(
-            [
-                SystemMessage(role="TripleSummarizer", content=summarize_triples_prompt),
-                HumanMessage(content=input_text),
-            ]
+        # Combine the prompt with the input text
+        summary_prompt = summarize_triples_prompt + "\n\n" + input_text
+
+        summary_prompt += "\nSummary:"
+
+        # Send the summarization prompt to the OpenAI API
+        response = self.client.chat.completions.create(
+            model="gpt-4-1106-preview",
+            messages=[{"role": "user", "content": summary_prompt}],
+            temperature=0.5,
+            max_tokens=250,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0
         )
 
-        return message.content
+        # Extract the summary from the API response
+        summary = response.choices[0].message.content.strip()
+
+        return summary
 
     def _triples_to_embeddings(self, triples):
         subjects, verbs, objects = zip(*triples)  # Unzip the triples into separate lists
@@ -349,7 +342,7 @@ class VectorKnowledgeGraph:
         nx.draw_networkx_labels(G, pos, font_size=12)
         plt.show()
 
-    def build_graph_from_subject_verb(self, subject_verb, similarity_threshold=0.8, max_results=20, metadata_query=None,
+    def build_graph_from_subject_relationship(self, subject_relationship, similarity_threshold=0.8, max_results=20, metadata_query=None,
                                       return_metadata=False):
         if len(self.triples_list) == 0:
             return
@@ -360,7 +353,7 @@ class VectorKnowledgeGraph:
         else:
             index, id_mapping, _ = self._filter_index_by_metadata_query(metadata_query)
 
-        subject, verb = subject_verb
+        subject, verb = subject_relationship
         subject_embedding = self.embedding_model.encode([subject])[0]
         verb_embedding = self.embedding_model.encode([verb])[0]
 
@@ -491,24 +484,22 @@ class VectorKnowledgeGraph:
 if __name__ == '__main__':
 
     # turn on tests as needed
-    visualize_test = False
     graph_test = True
-
-    if visualize_test:
-        load_secrets()
-        k_graph = VectorKnowledgeGraph(path="Sophia_GraphStoreMemory")
-        k_graph.visualize_graph_from_nouns(["Sophia", "Joey", "Artificial Intelligence"], similarity_threshold=0.6, depth=3)
+    visualize_test = True
 
     if graph_test:
         load_secrets()
-        model = ChatOpenAI(
-            model_name='gpt-4',
-            temperature=0.0,
-            openai_api_base=os.environ['LOCAL_TEXTGEN_API_BASE'],
-            openai_api_key="sk-111111111111111111111111111111111111111111111111"
+        client = OpenAI(
+            api_key="sk-111111111111111111111111111111111111111111111111",
+            base_url=os.environ['LOCAL_TEXTGEN_API_BASE']
         )
+
+        # delete the graph store memory
+        if os.path.exists("Test_GraphStoreMemory"):
+            shutil.rmtree("Test_GraphStoreMemory")
+
         # Create a vector knowledge graph
-        kgraph = VectorKnowledgeGraph(chat_llm=model)
+        kgraph = VectorKnowledgeGraph(chat_llm=client, path="Test_GraphStoreMemory")
 
         # try to load the graph from file
         loaded = kgraph.load()
@@ -614,11 +605,11 @@ if __name__ == '__main__':
 
         print("Building graph...")
         start = time.time()
-        subject_verb_tuple = ('Rachel', 'wears')
+        subject_relationship_tuple = ('Rachel', 'wears')
 
-        graph = kgraph.build_graph_from_subject_verb(subject_verb_tuple, similarity_threshold=0.7, return_metadata=True)
+        graph = kgraph.build_graph_from_subject_relationship(subject_relationship_tuple, similarity_threshold=0.7, return_metadata=True)
         print(time.time() - start)
-        print(subject_verb_tuple)
+        print(subject_relationship_tuple)
         print(graph)
         print("Summary: ")
         print(kgraph.summarize_graph(graph))
@@ -628,4 +619,9 @@ if __name__ == '__main__':
         triples = kgraph.query_triples_from_metadata({"reference": "https://blazblue.fandom.com/wiki/Ragna_the_Bloodedge#Personality"})
         print(time.time() - start)
         print(triples)
+
+    if visualize_test:
+        load_secrets()
+        k_graph = VectorKnowledgeGraph(path="Test_GraphStoreMemory")
+        k_graph.visualize_graph_from_nouns(["Rachel"], similarity_threshold=0.6, depth=3)
 

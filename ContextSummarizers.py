@@ -72,8 +72,11 @@ def summarize_messages_verbose(client, messages, start_index, end_index):
     return summary
 
 
-def summarize_messages_tuples(client, messages, start_index, end_index, summarize_first=True):
-    if summarize_first:
+def summarize_messages_tuples(client, messages, start_index=0, end_index=-1, summarize_first=True):
+    # if messages is not a list then make it a list
+    if not isinstance(messages, list):
+        input_text = messages
+    elif summarize_first:
         input_text = summarize_messages_verbose(client, messages, start_index, end_index)
     else:
         input_text = msgs2string(messages, start_index, end_index)
@@ -134,7 +137,7 @@ def summarize_messages_tuples(client, messages, start_index, end_index, summariz
         model="gpt-4-1106-preview",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.1,
-        max_tokens=1000,
+        max_tokens=4096,
         top_p=1,
         frequency_penalty=0,
         presence_penalty=0
