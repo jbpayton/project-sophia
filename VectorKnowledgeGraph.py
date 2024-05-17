@@ -52,6 +52,10 @@ class VectorKnowledgeGraph:
         # Initialize TinyDB
         self.metadata_db = TinyDB(f'{path}/db.json')
 
+        # create a folder to store raw messages
+        self.raw_messages_folder = f'{path}/raw_messages'
+        os.makedirs(self.raw_messages_folder, exist_ok=True)
+
     def save(self, path=""):
         try:
             if path == "":
@@ -100,6 +104,27 @@ class VectorKnowledgeGraph:
     def process_text(self, input_text, metadata=None, batch_size=50):
         # separate the text into sentences
         sentences = self.split_sentences(input_text)
+
+        if metadata is None:
+            metadata = {}
+
+        # create a timestamp for the metadata
+        metadata['timestamp'] = time.time()
+
+        filename = f'{self.raw_messages_folder}/{metadata["timestamp"]}.txt'
+
+        #if there is a name collision, add a number to the filename
+        file_number = 0
+        while os.path.exists(filename):
+            metadata['timestamp'] = time.time()
+            filename = f'{self.raw_messages_folder}/{metadata["timestamp"]}_{file_number}.txt'
+
+        # save the raw messages to a file
+        with open(filename, 'w', encoding="utf-8") as f:
+            f.write(input_text)
+
+        # save a reference to the raw messages in the metadata
+        metadata['raw_messages'] = f'{self.raw_messages_folder}/{metadata["timestamp"]}.txt'
 
         # process each batch of sentences into triples and embeddings
         for i in range(0, len(sentences), batch_size):
