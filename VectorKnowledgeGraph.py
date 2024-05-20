@@ -15,7 +15,7 @@ import numpy as np
 from util import load_secrets
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI
-from ContextSummarizers import summarize_messages_tuples
+from ContextSummarizers import summarize_messages_tuples, msgs2string
 
 # this is used in place of an alternate map function, allowing for the specification of alternative map functions
 class IdentityMap:
@@ -102,8 +102,18 @@ class VectorKnowledgeGraph:
             return False  # Return False if loading failed
 
     def process_text(self, input_text, metadata=None, batch_size=50):
-        # separate the text into sentences
-        sentences = self.split_sentences(input_text)
+        # if the input text is a list of messages, concatenate them into a single string
+        if isinstance(input_text, list):
+            # check to see if input text is a list of dictionaries
+            if isinstance(input_text[0], dict):
+                # get each 'content' key from the list of dictionaries and maka e a list of messages
+                sentences = [msg['content'] for msg in input_text]
+            else:
+                sentences = input_text
+            input_text = msgs2string(input_text, start_index=0, end_index=-1)
+        else:
+            # separate the text into sentences
+            sentences = self.split_sentences(input_text)
 
         if metadata is None:
             metadata = {}
@@ -134,6 +144,7 @@ class VectorKnowledgeGraph:
 
     @staticmethod
     def split_sentences(input_text):
+        # split on newlines
         sentences = input_text.split('.')
         return sentences
 
@@ -509,8 +520,9 @@ class VectorKnowledgeGraph:
 if __name__ == '__main__':
 
     # turn on tests as needed
-    graph_test = True
-    visualize_test = True
+    graph_test = False
+    visualize_test = False
+    recall_test = True
 
     if graph_test:
         load_secrets()
@@ -649,4 +661,45 @@ if __name__ == '__main__':
         load_secrets()
         k_graph = VectorKnowledgeGraph(path="Test_GraphStoreMemory")
         k_graph.visualize_graph_from_nouns(["Rachel"], similarity_threshold=0.6, depth=3)
+
+    if recall_test:
+        from AIAgent import AIAgent
+        load_secrets()
+
+        # delete the graph store memory
+        if os.path.exists("Test_GraphStoreMemory"):
+            shutil.rmtree("Test_GraphStoreMemory")
+
+        k_graph = VectorKnowledgeGraph(path="Test_GraphStoreMemory")
+
+        # delete the graph store memory
+        if os.path.exists("TestAgent_logs"):
+            shutil.rmtree("TestAgent_logs")
+
+        # create a profile map for the agent
+        profile_map = {
+            "name": "TestAgent",
+            "voice": "None",
+            "personality": "I am an AI agent designed to assist you with your queries."
+        }
+
+        test_agent = AIAgent("TestAgent", profile_map)
+
+        counter = 0
+
+        while True:
+            # prompt user for input
+            in_message = input("Enter a message: ")
+            # send message to agent
+            test_response, test_emotion, test_monologue, test_actions = test_agent.send(in_message)
+            # print response
+            print(test_response)
+
+            # every 5 interactions, save last 10 messages
+            if counter % 5 == 0 and counter != 0:
+                messages = test_agent.messages[-10:]
+                k_graph.process_text(messages, {"reference": "TestAgent_logs"})
+
+            counter += 1
+
 

@@ -10,11 +10,15 @@ from ConversationLogger import ConversationFileLogger
 
 
 class AIAgent:
-    def __init__(self, name):
+    def __init__(self, name, profile=None):
         self.name = name
         self.agent_type = "AI"
+
         # load profile
-        self.profile = util.load_profile(name)
+        if profile:
+            self.profile = profile
+        else:
+            self.profile = util.load_profile(name)
 
         self.conversation_logger = ConversationFileLogger(f"{self.name}_logs")
 
