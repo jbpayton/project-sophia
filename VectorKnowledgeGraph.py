@@ -15,7 +15,7 @@ import numpy as np
 from util import load_secrets
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI
-from ContextSummarizers import summarize_messages_tuples, msgs2string
+from ContextSummarizers import summarize_messages_tuples, msgs2string, summarize_messages_tuples_simpler
 
 # this is used in place of an alternate map function, allowing for the specification of alternative map functions
 class IdentityMap:
@@ -101,7 +101,7 @@ class VectorKnowledgeGraph:
             self.faiss_index = faiss.IndexFlatL2(self.embedding_dim)
             return False  # Return False if loading failed
 
-    def process_text(self, input_text, metadata=None, batch_size=50):
+    def process_text(self, input_text, metadata=None, batch_size=6):
         # if the input text is a list of messages, concatenate them into a single string
         if isinstance(input_text, list):
             # check to see if input text is a list of dictionaries
@@ -152,7 +152,7 @@ class VectorKnowledgeGraph:
                                                   object_threshold=0.9):
         # time the processing
         start_time = time.time()
-        new_triples = self._extract_triples(input_text)
+        new_triples, new_tuples = self._extract_triples(input_text)
         end_time = time.time()
         print(f"Extracted {len(new_triples)} triples in {end_time - start_time} seconds")
 
@@ -188,9 +188,15 @@ class VectorKnowledgeGraph:
         # Add metadata to the metadata database
         if metadata is not None:
             metadata_entries = []  # Create a list to collect the metadata entries
-            for triple_id, triple in zip(ids, filtered_triples):
+            for triple_id, triple, tuple in zip(ids, filtered_triples, new_tuples):
                 metadata_copy = metadata.copy()  # Create a copy of the metadata dictionary
                 metadata_copy['triple_id'] = int(triple_id)
+                # check to see if there is a 'reference' key in the metadata
+                if 'reference' in metadata:
+                    metadata_copy['reference'] = metadata['reference']
+                else:
+                    metadata_copy['reference'] = tuple.get('source', '')
+                metadata_copy['topic'] = tuple.get('topic', '')
                 metadata_entries.append(metadata_copy)  # Append the copy to the list
 
             self.metadata_db.insert_multiple(metadata_entries)  # Insert all metadata entries at once
@@ -201,7 +207,7 @@ class VectorKnowledgeGraph:
     def _extract_triples(self, input_text):
         triples_list = []
 
-        tuples_output = summarize_messages_tuples(self.client, input_text)
+        tuples_output = summarize_messages_tuples_simpler(self.client, input_text)
 
         # print("Got message: " + message.content)
 
@@ -222,7 +228,7 @@ class VectorKnowledgeGraph:
                 continue
             triples_list.append((subject, relationship, obj))
 
-        return triples_list
+        return triples_list, data
 
 
     def summarize_graph(self, triples_list):
@@ -520,9 +526,9 @@ class VectorKnowledgeGraph:
 if __name__ == '__main__':
 
     # turn on tests as needed
-    graph_test = False
-    visualize_test = False
-    recall_test = True
+    graph_test = True
+    visualize_test = True
+    recall_test = False
 
     if graph_test:
         load_secrets()
@@ -666,40 +672,70 @@ if __name__ == '__main__':
         from AIAgent import AIAgent
         load_secrets()
 
-        # delete the graph store memory
-        if os.path.exists("Test_GraphStoreMemory"):
-            shutil.rmtree("Test_GraphStoreMemory")
+        list_conversation_1 = []
+        list_conversation_1.append("I would like talk about the characters in Evangelion.")
+        list_conversation_1.append("Evangelion is one of the most popular anime series of all time.")
+        list_conversation_1.append("I think I saw it on my birthday.")
+        list_conversation_1.append("MY birthday is May 2nd, when is yours?")
+        list_conversation_1.append("I think Rei might not come off as a very complex character but she seems to "
+                                 "symbolize something.")
+        list_conversation_1.append("I wonder if the other characters are symbolic too, any thoughts?")
 
-        k_graph = VectorKnowledgeGraph(path="Test_GraphStoreMemory")
+        list_conversation_2 = []
+        list_conversation_2.append("I would like to talk about vocaloid, what do you know about them?.")
+        list_conversation_2.append("Which one is your favorite? You have to pick one.")
+        list_conversation_2.append("My favorite Hatsune Miku.")
+        list_conversation_2.append("I like her voice and her songs, they are very catchy.")
+        list_conversation_2.append("I think she is a very popular vocaloid.")
+        list_conversation_2.append("Do you know any other vocaloids?")
+        list_conversation_2.append("I think there are many vocaloids, but I am not sure.")
 
-        # delete the graph store memory
-        if os.path.exists("TestAgent_logs"):
-            shutil.rmtree("TestAgent_logs")
+        def simulate_conversation(list_conversation, agent_name="TestAgent"):
+            # delete the graph store memory
+            if os.path.exists(f"{agent_name}_GraphStoreMemory"):
+                shutil.rmtree(f"{agent_name}_GraphStoreMemory")
 
-        # create a profile map for the agent
-        profile_map = {
-            "name": "TestAgent",
-            "voice": "None",
-            "personality": "I am an AI agent designed to assist you with your queries."
-        }
+            k_graph = VectorKnowledgeGraph(path=f"{agent_name}_GraphStoreMemory")
 
-        test_agent = AIAgent("TestAgent", profile_map)
+            # delete the graph store memory
+            if os.path.exists(f"{agent_name}_logs"):
+                shutil.rmtree(f"{agent_name}_logs")
 
-        counter = 0
+            # create a profile map for the agent
+            profile_map = {
+                "name": f"{agent_name}",
+                "voice": "None",
+                "personality": "I am an AI agent designed to have a conversation."
+            }
 
-        while True:
-            # prompt user for input
-            in_message = input("Enter a message: ")
-            # send message to agent
-            test_response, test_emotion, test_monologue, test_actions = test_agent.send(in_message)
-            # print response
-            print(test_response)
+            test_agent = AIAgent(agent_name, profile_map)
 
-            # every 5 interactions, save last 10 messages
-            if counter % 5 == 0 and counter != 0:
-                messages = test_agent.messages[-10:]
-                k_graph.process_text(messages, {"reference": "TestAgent_logs"})
+            counter = 0
+            for message in list_conversation:
+                # send message to agent
+                test_response, test_emotion, test_monologue, test_actions = test_agent.send(message, "Joey")
+                # print response
+                print(test_response)
+                counter += 1
+                # every 5 interactions, save last 10 messages
+                if counter % 6 == 0:
+                    messages = test_agent.messages[-12:]
+                    k_graph.process_text(messages)
 
-            counter += 1
+            print("Building graph for ...")
+            start = time.time()
+            query = "Joey"
+            print(f"Building graph for {query}...")
+            graph = k_graph.build_graph_from_noun(query, 0.7, 1)
+            print(time.time() - start)
+            print("Query: " + query)
+            print(graph)
+            print("Summary: ")
+            print(k_graph.summarize_graph(graph))
+
+        simulate_conversation(list_conversation_1, agent_name="TestAgent1")
+        simulate_conversation(list_conversation_2, agent_name="TestAgent2")
+
+
 
 
