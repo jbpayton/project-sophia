@@ -83,6 +83,7 @@ class ReceivedState(State[Any]):
 
         # Analyze task structure if operational
         subtasks = self._analyze_task_structure(context.user_context)
+        subtasks.reverse()
         if subtasks:
             context.user_context.scratch_memory.task_stack.clear()
             for subtask in subtasks:
@@ -98,31 +99,30 @@ class ReceivedState(State[Any]):
         )
 
     def _analyze_task_structure(self, context) -> List[str]:
-        """Task analysis with initial check for operation need"""
+        """Task analysis that allows both tool and non-tool steps"""
         if not context.scratch_memory.task_stack[-1]:
             return []
 
         prompt = f"""
         Task: {context.scratch_memory.task_stack[-1]}
-
         Available Tools: {context.tools_handler.get_tools_description()}
 
-        Break this task into minimal required tool operations.
-        Each subtask must directly use one of the available tools.
-        List each required tool operation as a separate step.
+        Break this task into sequential steps. Each step can be:
+        - Using a tool
+        - Processing previous results
+        - Forming a response
 
-        SUBTASKS:
+        List ONLY the steps:
+        1.
+        2.
+        ...
         """
         response = context.llm_call([{"role": "user", "content": prompt}])
 
         subtasks = []
-        in_subtasks = False
         for line in response.split('\n'):
             line = line.strip()
-            if line.upper() == 'SUBTASKS:':
-                in_subtasks = True
-                continue
-            if in_subtasks and line and line[0].isdigit():
+            if line and line[0].isdigit():
                 task = re.sub(r'^\d+\.\s*', '', line).strip()
                 if task:
                     subtasks.append(task)
@@ -134,35 +134,25 @@ class ThinkingState(State[Any]):
     def process(self, context: ProcessContext[Any]) -> None:
         thought = self._generate_thought(context.user_context)
 
-        if not self._is_repetitive_thought(
-                thought,
-                context.user_context.scratch_memory.thoughts
-        ):
-            context.user_context.scratch_memory.add_thought(thought)
-            context.output_queue.put({
-                "content": thought,
-                "sender": context.user_context.metadata.get("agent_name", "Agent"),
-                "timestamp": datetime.now().strftime("%H:%M:%S")
-            })
-            logger.info(f"💭 Agent: {thought}")
+        if self._is_repetitive_thought(thought, context.user_context.scratch_memory.thoughts):
+            return
 
-            if "RESPOND:" in thought:
-                context.flags.set("NEEDS_RESPONSE")
-                return
+        context.user_context.scratch_memory.add_thought(thought)
+        logger.info(f"💭 Agent: {thought}")
 
-            # Check for tool usage intent
-            tool_names = context.user_context.tools_handler.get_tools_list()
-            intends_tool_use = any(
-                re.search(rf'use.*{tool}', thought.lower())
-                for tool in tool_names
-            )
+        # Parse the structured response
+        needs_tool = bool(re.search(r'NEEDS_TOOL:\s*yes', thought, re.IGNORECASE))
+        ready_to_respond = bool(re.search(r'READY_TO_RESPOND:\s*yes', thought, re.IGNORECASE))
 
-            if intends_tool_use:
-                context.flags.set("NEEDS_TOOL")
-            elif self._is_task_complete(context.user_context):
-                context.flags.set("TASK_COMPLETE")
-            else:
-                context.flags.set("CONTINUE_THINKING")
+        if needs_tool:
+            context.flags.set("NEEDS_TOOL")
+        elif ready_to_respond:
+            context.flags.set("NEEDS_RESPONSE")
+        else:
+            context.flags.set("CONTINUE_THINKING")
+            # pop the current task if no tool is needed (but make sure it's not the last task)
+            if len(context.user_context.scratch_memory.task_stack) > 1:
+                context.user_context.scratch_memory.task_stack.pop()
 
     def _generate_thought(self, context) -> str:
         current_task = context.scratch_memory.task_stack[-1]
@@ -175,12 +165,14 @@ class ThinkingState(State[Any]):
         Actions completed: {actions_taken}
         Available tools: {context.tools_handler.get_tools_description()}
 
-        IMPORTANT DECISION GUIDELINES:
-        1. If this is a question about the conversation or previous context, respond directly with "RESPOND:" followed by your answer.
-        2. If this requires actual calculation or file operations, specify which tool you need.
-        3. If this is a general question or conversation, respond directly without using tools.
+        Evaluate the task and determine the next step.
 
-        What is your immediate next step?
+        Answer in format:
+        NEEDS_TOOL: yes/no
+        TOOL_NAME: [name of tool if needed, otherwise 'none']
+        READY_TO_RESPOND: yes/no
+        REASON: [explanation of your decision]
+        NEXT_STEP: [describe the specific next action]
         """
         return context.llm_call([{"role": "user", "content": prompt}])
 
@@ -275,6 +267,7 @@ class ActionState(State[Any]):
         """
         return context.llm_call([{"role": "user", "content": prompt}])
 
+
 class ReflectionState(State[Any]):
     def process(self, context: ProcessContext[Any]) -> None:
         last_execution = context.user_context.scratch_memory.variables.get('last_execution')
@@ -283,50 +276,41 @@ class ReflectionState(State[Any]):
             logger.error("❌ No execution result found for reflection")
             return
 
+        current_task = context.user_context.scratch_memory.task_stack[-1]
+        remaining_tasks = len(context.user_context.scratch_memory.task_stack)
+
         reflection_prompt = f"""
-        Current task: {context.user_context.scratch_memory.task_stack[-1]}
+        Current step: {current_task}
         Tool used: {context.user_context.scratch_memory.completed_actions[-1]['tool']}
         Result: {last_execution.result}
+        Tasks remaining: {remaining_tasks}
 
-        Evaluate the following:
-        1. Was the tool execution successful? (yes/no)
-        2. Does this result complete the current task? (yes/no)
-        3. Are additional steps needed? (yes/no)
+        Evaluate:
+        1. Was this step successful? (yes/no)
+        2. Is this the last step needed? (yes/no)
 
-        Answer in the format:
-        EXECUTION_SUCCESSFUL: yes/no
-        TASK_COMPLETE: yes/no
-        NEEDS_MORE_STEPS: yes/no
+        Answer in format:
+        STEP_SUCCESSFUL: yes/no
+        LAST_STEP: yes/no
         REASON: [brief explanation]
         """
 
         reflection = context.user_context.llm_call([{"role": "user", "content": reflection_prompt}])
-
-        # Log reflection
         logger.info(f"🤔 Reflection: {reflection}")
-        context.output_queue.put({
-            "content": reflection,
-            "sender": context.user_context.metadata.get("agent_name", "Agent"),
-            "timestamp": datetime.now().strftime("%H:%M:%S")
-        })
 
-        # Check if task is complete
-        task_complete = bool(re.search(r'task_complete:\s*yes', reflection.lower()))
-        if task_complete:
-            # Store current stack for logging
-            stack_before = context.user_context.scratch_memory.task_stack.copy()
-            completed_task = context.user_context.scratch_memory.task_stack.pop()
+        step_successful = bool(re.search(r'STEP_SUCCESSFUL:\s*yes', reflection, re.IGNORECASE))
+        last_step = bool(re.search(r'LAST_STEP:\s*yes', reflection, re.IGNORECASE))
 
-            # Log task completion
-            logger.debug(f"📋 Stack before pop: {stack_before}")
-            logger.debug(f"📋 Stack after pop: {context.user_context.scratch_memory.task_stack}")
-            logger.debug(f"✅ Completed task: {completed_task}")
+        if not step_successful:
+            context.flags.set("REFLECTION_ERROR")
+            return
 
-            # Set appropriate flags based on remaining tasks
-            if not context.user_context.scratch_memory.task_stack:
-                context.flags.set("ALL_TASKS_COMPLETE")
-            else:
-                context.flags.set("SUBTASK_COMPLETE")
+        # Pop completed step
+        completed_task = context.user_context.scratch_memory.task_stack.pop()
+        logger.debug(f"✅ Completed task: {completed_task}")
+
+        if last_step or not context.user_context.scratch_memory.task_stack:
+            context.flags.set("ALL_TASKS_COMPLETE")
         else:
             context.flags.set("NEEDS_MORE_STEPS")
 
