@@ -64,7 +64,7 @@ class ReceivedState(State[Any]):
         Consider carefully:
         - Questions about numbers might need calculation even if not explicitly asked
         - Questions about previous messages need conversation context
-        - General questions about capabiliiies or general knowledge need no tools
+        - General questions about capabilities or general knowledge need no tools
 
         Respond with only:
         OPERATIONAL if it needs any tool operations
@@ -103,14 +103,19 @@ class ReceivedState(State[Any]):
         if not context.scratch_memory.task_stack[-1]:
             return []
 
+        conversation = self._format_conversation_history(context.message_history[-5:])
+
         prompt = f"""
         Task: {context.scratch_memory.task_stack[-1]}
         Available Tools: {context.tools_handler.get_tools_description()}
+        Recent conversation: {conversation}
 
         Break this task into sequential steps. Each step can be:
         - Using a tool
-        - Processing previous results
+        - Deciding what to do with previous results
         - Forming a response
+        
+        Please ensure all steps are necessary given the original step.
 
         List ONLY the steps:
         1.
@@ -193,7 +198,7 @@ class ThinkingState(State[Any]):
         if not actions:
             return "None"
         return "\n".join(
-            f"- Used {action['tool']['actionName']}: Result = {action['result']}"
+            f"Step Completed - {action['completed_step']}- Used {action['tool']['actionName']}: Result = {action['result']}"
             for action in actions
         )
 
@@ -237,6 +242,7 @@ class ActionState(State[Any]):
 
             # Record successful execution
             context.user_context.scratch_memory.add_completed_action({
+                "completed_step": context.user_context.scratch_memory.task_stack[-1],  # "current_task
                 "tool": tool_call,
                 "result": execution_result.result,
                 "success": execution_result.success
@@ -258,6 +264,7 @@ class ActionState(State[Any]):
         prompt = f"""
         Current task: {context.scratch_memory.task_stack[-1]}
         Available tools: {context.tools_handler.get_tools_description()}
+        Previous actions: {self._format_completed_actions(context.scratch_memory.completed_actions)}
 
         You must generate a valid tool call in JSON format with 'actionName' and required parameters.
         Do not describe the tool call, just generate the JSON.
@@ -266,6 +273,14 @@ class ActionState(State[Any]):
         {{"actionName": "tool_name", "param1": "value1", ...}}
         """
         return context.llm_call([{"role": "user", "content": prompt}])
+
+    def _format_completed_actions(self, actions: List[Dict]) -> str:
+        if not actions:
+            return "None"
+        return "\n".join(
+            f"Step Completed - {action['completed_step']}- Used {action['tool']['actionName']}: Result = {action['result']}"
+            for action in actions
+        )
 
 
 class ReflectionState(State[Any]):
